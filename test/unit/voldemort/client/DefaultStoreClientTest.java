@@ -1,9 +1,34 @@
+/*
+ * Copyright 2008-2010 LinkedIn, Inc
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not
+ * use this file except in compliance with the License. You may obtain a copy of
+ * the License at
+ * 
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+ * License for the specific language governing permissions and limitations under
+ * the License.
+ */
+
 package voldemort.client;
+
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 import java.util.Arrays;
 import java.util.Map;
 
-import junit.framework.TestCase;
+import org.junit.Before;
+import org.junit.Test;
+
 import voldemort.secondary.SecondaryIndexTestUtils;
 import voldemort.serialization.Serializer;
 import voldemort.serialization.StringSerializer;
@@ -14,13 +39,13 @@ import voldemort.versioning.ObsoleteVersionException;
 import voldemort.versioning.VectorClock;
 import voldemort.versioning.Versioned;
 
-public class DefaultStoreClientTest extends TestCase {
+public class DefaultStoreClientTest {
 
-    private int nodeId;
-    private Time time;
-    private StoreClient<String, String> client;
+    protected int nodeId;
+    protected Time time;
+    protected StoreClient<String, String> client;
 
-    @Override
+    @Before
     public void setUp() {
         this.nodeId = 0;
         this.time = SystemTime.INSTANCE;
@@ -34,6 +59,7 @@ public class DefaultStoreClientTest extends TestCase {
         this.client = factory.getStoreClient("test");
     }
 
+    @Test
     public void testGet() {
         assertEquals("GET of non-existant key should return null.", null, client.get("k"));
         client.put("k", "v");
@@ -42,6 +68,7 @@ public class DefaultStoreClientTest extends TestCase {
                                                                                  .getVersion());
     }
 
+    @Test
     public void testGetWithDefault() {
         assertEquals("GET of missing key should return default.",
                      new Versioned<String>("v"),
@@ -58,12 +85,14 @@ public class DefaultStoreClientTest extends TestCase {
         assertNotNull(client.get("k").getVersion());
     }
 
+    @Test
     public void testGetUnversioned() {
         assertEquals("GET of non-existant key should be null.", null, client.getValue("k"));
         client.put("k", "v");
         assertEquals("GET of k should return v, if v is there.", "v", client.getValue("k"));
     }
 
+    @Test
     public void testGetUnversionedWithDefault() {
         assertEquals("GET of non-existant key should return default.",
                      "v",
@@ -75,6 +104,7 @@ public class DefaultStoreClientTest extends TestCase {
                      client.getValue("k", "v2"));
     }
 
+    @Test
     public void testPutVersioned() {
         client.put("k", Versioned.value("v"));
         Versioned<String> v = client.get("k");
@@ -99,6 +129,7 @@ public class DefaultStoreClientTest extends TestCase {
                      client.get("k").getVersion());
     }
 
+    @Test
     public void testPutUnversioned() {
         client.put("k", "v");
         assertEquals("GET should fetch the value set by PUT", "v", client.getValue("k"));
@@ -106,6 +137,7 @@ public class DefaultStoreClientTest extends TestCase {
         assertEquals("Overwrite of value should succeed.", "v2", client.getValue("k"));
     }
 
+    @Test
     public void testPutIfNotObsolete() {
         client.putIfNotObsolete("k", new Versioned<String>("v"));
         assertEquals("PUT of non-obsolete version should succeed.", "v", client.getValue("k"));
@@ -113,6 +145,7 @@ public class DefaultStoreClientTest extends TestCase {
         assertEquals("Failed PUT should not change the value stored.", "v", client.getValue("k"));
     }
 
+    @Test
     public void testDelete() {
         assertFalse("Delete of non-existant key should be false.", client.delete("k"));
         client.put("k", "v");
@@ -120,6 +153,7 @@ public class DefaultStoreClientTest extends TestCase {
         assertNull("After a successful delete(k), get(k) should return null.", client.get("k"));
     }
 
+    @Test
     public void testDeleteVersion() {
         assertFalse("Delete of non-existant key should be false.",
                     client.delete("k", new VectorClock()));
@@ -132,6 +166,7 @@ public class DefaultStoreClientTest extends TestCase {
         assertNull("After a successful delete(k), get(k) should return null.", client.get("k"));
     }
 
+    @Test
     public void testGetAll() {
         client.put("k", "v");
         client.put("l", "m");

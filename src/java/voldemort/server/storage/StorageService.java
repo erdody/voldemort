@@ -59,11 +59,13 @@ import voldemort.server.VoldemortConfig;
 import voldemort.server.scheduler.DataCleanupJob;
 import voldemort.server.scheduler.SchedulerService;
 import voldemort.server.scheduler.slop.BlockingSlopPusherJob;
+import voldemort.server.scheduler.slop.RepairJob;
 import voldemort.server.scheduler.slop.StreamingSlopPusherJob;
 import voldemort.store.StorageConfiguration;
 import voldemort.store.StorageEngine;
 import voldemort.store.Store;
 import voldemort.store.StoreDefinition;
+import voldemort.store.grandfather.GrandfatheringStore;
 import voldemort.store.invalidmetadata.InvalidMetadataCheckingStore;
 import voldemort.store.logging.LoggingStore;
 import voldemort.store.metadata.MetadataStore;
@@ -112,7 +114,9 @@ public class StorageService extends AbstractService {
     private final StoreRepository storeRepository;
     private final SchedulerService scheduler;
     private final MetadataStore metadata;
-    private final Semaphore cleanupPermits;
+
+    // Common permit shared by all job which do a disk scan
+    private final Semaphore scanPermits;
     private final SocketStoreFactory storeFactory;
     private final ConcurrentMap<String, StorageConfiguration> storageConfigs;
     private final ClientThreadPool clientThreadPool;
@@ -129,7 +133,7 @@ public class StorageService extends AbstractService {
         this.scheduler = scheduler;
         this.storeRepository = storeRepository;
         this.metadata = metadata;
-        this.cleanupPermits = new Semaphore(1);
+        this.scanPermits = new Semaphore(voldemortConfig.getNumScanPermits());
         this.storageConfigs = new ConcurrentHashMap<String, StorageConfiguration>();
         this.clientThreadPool = new ClientThreadPool(config.getClientMaxThreads(),
                                                      config.getClientThreadIdleMs(),
@@ -208,40 +212,56 @@ public class StorageService extends AbstractService {
             if(config == null)
                 throw new ConfigurationException("Attempt to get slop store failed");
 
-            SlopStorageEngine slopEngine = new SlopStorageEngine(config.getStore("slop"),
+            SlopStorageEngine slopEngine = new SlopStorageEngine(config.getStore(SlopStorageEngine.SLOP_STORE_NAME),
                                                                  metadata.getCluster());
             registerEngine(slopEngine);
             storeRepository.setSlopStore(slopEngine);
 
-            // Now initialize the pusher job after some time
-            GregorianCalendar cal = new GregorianCalendar();
-            cal.add(Calendar.SECOND,
-                    (int) (voldemortConfig.getSlopFrequencyMs() / Time.MS_PER_SECOND));
-            Date nextRun = cal.getTime();
-            logger.info("Initializing slop pusher job type " + voldemortConfig.getPusherType()
-                        + " at " + nextRun);
+            if(voldemortConfig.isSlopPusherJobEnabled()) {
+                // Now initialize the pusher job after some time
+                GregorianCalendar cal = new GregorianCalendar();
+                cal.add(Calendar.SECOND,
+                        (int) (voldemortConfig.getSlopFrequencyMs() / Time.MS_PER_SECOND));
+                Date nextRun = cal.getTime();
+                logger.info("Initializing slop pusher job type " + voldemortConfig.getPusherType()
+                            + " at " + nextRun);
 
-            if(voldemortConfig.getPusherType().compareTo(BlockingSlopPusherJob.TYPE_NAME) == 0) {
                 scheduler.schedule("slop",
-                                   new BlockingSlopPusherJob(storeRepository,
-                                                             metadata,
-                                                             failureDetector,
-                                                             voldemortConfig.getSlopMaxWriteBytesPerSec()),
+                                   (voldemortConfig.getPusherType()
+                                                   .compareTo(BlockingSlopPusherJob.TYPE_NAME) == 0) ? new BlockingSlopPusherJob(storeRepository,
+                                                                                                                                 metadata,
+                                                                                                                                 failureDetector,
+                                                                                                                                 voldemortConfig,
+                                                                                                                                 scanPermits)
+                                                                                                    : new StreamingSlopPusherJob(storeRepository,
+                                                                                                                                 metadata,
+                                                                                                                                 failureDetector,
+                                                                                                                                 voldemortConfig,
+                                                                                                                                 scanPermits),
                                    nextRun,
                                    voldemortConfig.getSlopFrequencyMs());
-            } else if(voldemortConfig.getPusherType().compareTo(StreamingSlopPusherJob.TYPE_NAME) == 0) {
-                scheduler.schedule("slop",
-                                   new StreamingSlopPusherJob(storeRepository,
-                                                              metadata,
-                                                              failureDetector,
-                                                              voldemortConfig),
-                                   nextRun,
-                                   voldemortConfig.getSlopFrequencyMs());
-            } else {
-                logger.error("Unsupported slop pusher job type " + voldemortConfig.getPusherType());
+
+                /*
+                 * Register the repairer thread only if slop pusher job is also
+                 * enabled
+                 */
+                if(voldemortConfig.isRepairEnabled()) {
+                    cal.add(Calendar.SECOND,
+                            (int) (voldemortConfig.getRepairFrequencyMs() / Time.MS_PER_SECOND));
+                    nextRun = cal.getTime();
+                    logger.info("Initializing repair job " + voldemortConfig.getPusherType()
+                                + " at " + nextRun);
+                    RepairJob job = new RepairJob(storeRepository, metadata, scanPermits);
+
+                    JmxUtils.registerMbean(job, JmxUtils.createObjectName(job.getClass()));
+                    scheduler.schedule("repair",
+                                       job,
+                                       nextRun,
+                                       voldemortConfig.getRepairFrequencyMs());
+                }
             }
-
         }
+
         List<StoreDefinition> storeDefs = new ArrayList<StoreDefinition>(this.metadata.getStoreDefList());
         logger.info("Initializing stores:");
 
@@ -361,12 +381,21 @@ public class StorageService extends AbstractService {
 
         /* Now add any store wrappers that are enabled */
         Store<ByteArray, byte[], byte[]> store = engine;
-        boolean isSlop = store.getName().compareTo("slop") == 0;
+
+        boolean isSlop = store.getName().compareTo(SlopStorageEngine.SLOP_STORE_NAME) == 0;
+        boolean isMetadata = store.getName().compareTo(MetadataStore.METADATA_STORE_NAME) == 0;
         if(voldemortConfig.isVerboseLoggingEnabled())
             store = new LoggingStore<ByteArray, byte[], byte[]>(store,
                                                                 cluster.getName(),
                                                                 SystemTime.INSTANCE);
         if(!isSlop) {
+            if(!isMetadata)
+                if(voldemortConfig.isGrandfatherEnabled())
+                    store = new GrandfatheringStore(store,
+                                                    metadata,
+                                                    storeRepository,
+                                                    clientThreadPool);
+
             if(voldemortConfig.isRedirectRoutingEnabled())
                 store = new RedirectingStore(store,
                                              metadata,
@@ -379,8 +408,7 @@ public class StorageService extends AbstractService {
         }
 
         if(voldemortConfig.isStatTrackingEnabled()) {
-            StatTrackingStore<ByteArray, byte[], byte[]> statStore = new StatTrackingStore<ByteArray, byte[], byte[]>(store,
-                                                                                                                      this.storeStats);
+            StatTrackingStore statStore = new StatTrackingStore(store, this.storeStats);
             store = statStore;
             if(voldemortConfig.isJmxEnabled()) {
 
@@ -503,7 +531,7 @@ public class StorageService extends AbstractService {
         EventThrottler throttler = new EventThrottler(maxReadRate);
 
         Runnable cleanupJob = new DataCleanupJob<ByteArray, byte[], byte[]>(engine,
-                                                                            cleanupPermits,
+                                                                            scanPermits,
                                                                             storeDef.getRetentionDays()
                                                                                     * Time.MS_PER_DAY,
                                                                             SystemTime.INSTANCE,
@@ -630,10 +658,10 @@ public class StorageService extends AbstractService {
                 if(storeDef.hasRetentionPeriod()) {
                     ExecutorService executor = Executors.newFixedThreadPool(1);
                     try {
-                        if(cleanupPermits.availablePermits() >= 1) {
+                        if(scanPermits.availablePermits() >= 1) {
 
                             executor.execute(new DataCleanupJob<ByteArray, byte[], byte[]>(engine,
-                                                                                           cleanupPermits,
+                                                                                           scanPermits,
                                                                                            storeDef.getRetentionDays()
                                                                                                    * Time.MS_PER_DAY,
                                                                                            SystemTime.INSTANCE,

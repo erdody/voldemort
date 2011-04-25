@@ -26,6 +26,8 @@ import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 
+import org.apache.commons.io.IOUtils;
+
 import voldemort.client.protocol.RequestFormatType;
 import voldemort.cluster.Zone;
 import voldemort.cluster.failuredetector.FailureDetectorConfig;
@@ -43,7 +45,7 @@ import voldemort.utils.Utils;
  */
 public class ClientConfig {
 
-    private volatile int maxConnectionsPerNode = 6;
+    private volatile int maxConnectionsPerNode = 50;
     private volatile int maxTotalConnections = 500;
     private volatile int maxThreads = 5;
     private volatile int maxQueuedRequests = 50;
@@ -51,7 +53,7 @@ public class ClientConfig {
     private volatile long connectionTimeoutMs = 500;
     private volatile long socketTimeoutMs = 5000;
     private volatile boolean socketKeepAlive = false;
-    private volatile int selectors = 4;
+    private volatile int selectors = 8;
     private volatile long routingTimeoutMs = 15000;
     private volatile int socketBufferSize = 64 * 1024;
     private volatile SerializerFactory serializerFactory = new DefaultSerializerFactory();
@@ -59,6 +61,7 @@ public class ClientConfig {
     private volatile RequestFormatType requestFormatType = RequestFormatType.VOLDEMORT_V1;
     private volatile RoutingTier routingTier = RoutingTier.CLIENT;
     private volatile boolean enableJmx = true;
+    private volatile boolean enableLazy = true;
 
     private volatile boolean enablePipelineRoutedStore = true;
     private volatile int clientZoneId = Zone.DEFAULT_ZONE_ID;
@@ -96,6 +99,7 @@ public class ClientConfig {
     public static final String ENABLE_JMX_PROPERTY = "enable_jmx";
     public static final String ENABLE_PIPELINE_ROUTED_STORE_PROPERTY = "enable_pipeline_routed_store";
     public static final String ENABLE_HINTED_HANDOFF_PROPERTY = "enable_hinted_handoff";
+    public static final String ENABLE_LAZY_PROPERTY = "enable-lazy";
     public static final String CLIENT_ZONE_ID = "client_zone_id";
     public static final String FAILUREDETECTOR_IMPLEMENTATION_PROPERTY = "failuredetector_implementation";
     public static final String FAILUREDETECTOR_BANNAGE_PERIOD_PROPERTY = "failuredetector_bannage_period";
@@ -120,6 +124,8 @@ public class ClientConfig {
             properties.load(input);
         } catch(IOException e) {
             throw new ConfigurationException(e);
+        } finally {
+            IOUtils.closeQuietly(input);
         }
         setProperties(properties);
     }
@@ -186,6 +192,9 @@ public class ClientConfig {
 
         if(props.containsKey(ENABLE_JMX_PROPERTY))
             this.setEnableJmx(props.getBoolean(ENABLE_JMX_PROPERTY));
+
+        if(props.containsKey(ENABLE_LAZY_PROPERTY))
+            this.setEnableLazy(props.getBoolean(ENABLE_LAZY_PROPERTY));
 
         if(props.containsKey(ENABLE_PIPELINE_ROUTED_STORE_PROPERTY))
             this.setEnablePipelineRoutedStore(props.getBoolean(ENABLE_PIPELINE_ROUTED_STORE_PROPERTY));
@@ -499,6 +508,20 @@ public class ClientConfig {
      */
     public ClientConfig setEnableJmx(boolean enableJmx) {
         this.enableJmx = enableJmx;
+        return this;
+    }
+
+    public boolean isLazyEnabled() {
+        return this.enableLazy;
+    }
+
+    /**
+     * Enable lazy initialization of clients?
+     *
+     * @param enableLazy If true clients will be lazily initialized
+     */
+    public ClientConfig setEnableLazy(boolean enableLazy) {
+        this.enableLazy = enableLazy;
         return this;
     }
 
