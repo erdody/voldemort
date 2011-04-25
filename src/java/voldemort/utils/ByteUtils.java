@@ -343,7 +343,7 @@ public class ByteUtils {
             int newlyRead = stream.read(buffer, read, buffer.length - read);
             if(newlyRead == -1)
                 throw new EOFException("Attempt to read " + buffer.length
-                                       + " bytes failed due to EOF.");
+                                       + " bytes failed due to EOF. Read " + read + " instead.");
             read += newlyRead;
         }
     }
