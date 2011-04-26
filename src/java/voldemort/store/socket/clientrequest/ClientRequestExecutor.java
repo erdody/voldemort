@@ -186,6 +186,8 @@ public class ClientRequestExecutor extends SelectorManagerWorker {
         if(!clientRequest.isCompleteResponse(inputStream.getBuffer())) {
             // Ouch - we're missing some data for a full request, so handle that
             // and return.
+            if(logger.isDebugEnabled())
+                logger.debug("Incomplete request for socket " + socketChannel);
             handleIncompleteRequest(position);
             return;
         }

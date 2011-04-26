@@ -308,6 +308,8 @@ public class VoldemortNativeClientRequestFormat implements RequestFormat {
                 }
             } catch(VoldemortException e) {
                 // Ignore application-level exceptions
+                if(logger.isDebugEnabled())
+                    logger.debug("Ignored exception ", e);
             }
 
             // If there aren't any remaining, we've "consumed" all the bytes and
@@ -326,9 +328,9 @@ public class VoldemortNativeClientRequestFormat implements RequestFormat {
     }
 
     public void writeGetAllKeysRequest(DataOutputStream outputStream,
-                                        String storeName,
-                                        RangeQuery query,
-                                        RequestRoutingType routingType) throws IOException {
+                                       String storeName,
+                                       RangeQuery query,
+                                       RequestRoutingType routingType) throws IOException {
         // Check query
         outputStream.writeByte(VoldemortOpCode.GET_KEYS_BY_SEC_OP_CODE);
         outputStream.writeUTF(storeName);

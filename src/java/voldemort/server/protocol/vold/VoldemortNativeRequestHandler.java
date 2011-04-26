@@ -5,6 +5,7 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -228,13 +229,26 @@ public class VoldemortNativeRequestHandler extends AbstractRequestHandler implem
 
     private void writeResults(DataOutputStream outputStream, List<Versioned<byte[]>> values)
             throws IOException {
+        writeResults(outputStream, values, false);
+    }
+
+    private void writeResults(DataOutputStream outputStream,
+                              List<Versioned<byte[]>> values,
+                              boolean logged) throws IOException {
         outputStream.writeInt(values.size());
+        if(logged)
+            logger.info("Written GET RESULTS size " + values.size());
         for(Versioned<byte[]> v: values) {
             byte[] clock = ((VectorClock) v.getVersion()).toBytes();
             byte[] value = v.getValue();
             outputStream.writeInt(clock.length + value.length);
             outputStream.write(clock);
             outputStream.write(value);
+            if(logged)
+                logger.info(String.format("Written GET RESULTS length %d, clock %s, value %s",
+                                          clock.length + value.length,
+                                          Arrays.toString(clock),
+                                          Arrays.toString(value)));
         }
     }
 
@@ -242,6 +256,8 @@ public class VoldemortNativeRequestHandler extends AbstractRequestHandler implem
                            DataOutputStream outputStream,
                            Store<ByteArray, byte[], byte[]> store) throws IOException {
         ByteArray key = readKey(inputStream);
+
+        logger.debug("Handling get for key " + key + " str: " + new String(key.get()));
 
         byte[] transforms = null;
         if(protocolVersion > 2) {
@@ -257,7 +273,7 @@ public class VoldemortNativeRequestHandler extends AbstractRequestHandler implem
             writeException(outputStream, e);
             return;
         }
-        writeResults(outputStream, results);
+        writeResults(outputStream, results, true);
     }
 
     private void handleGetAll(DataInputStream inputStream,

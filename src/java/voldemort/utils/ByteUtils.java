@@ -24,6 +24,7 @@ import java.io.UnsupportedEncodingException;
 import java.nio.ByteBuffer;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.Arrays;
 
 /**
  * Utility functions for munging on bytes
@@ -343,7 +344,9 @@ public class ByteUtils {
             int newlyRead = stream.read(buffer, read, buffer.length - read);
             if(newlyRead == -1)
                 throw new EOFException("Attempt to read " + buffer.length
-                                       + " bytes failed due to EOF. Read " + read + " instead.");
+                                       + " bytes failed due to EOF. Read " + read + " instead. "
+                                       + "Bytes: "
+                                       + Arrays.toString(ByteUtils.copy(buffer, 0, read)));
             read += newlyRead;
         }
     }
