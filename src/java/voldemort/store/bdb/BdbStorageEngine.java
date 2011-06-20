@@ -121,7 +121,7 @@ public class BdbStorageEngine implements StorageEngine<ByteArray, byte[], byte[]
             Cursor cursor = getBdbDatabase().openCursor(null, null);
             return new BdbEntriesIterator(cursor);
         } catch(DatabaseException e) {
-            logger.error(e);
+            logger.error("While retrieving entries", e);
             throw new PersistenceFailureException(e);
         }
     }
@@ -131,7 +131,7 @@ public class BdbStorageEngine implements StorageEngine<ByteArray, byte[], byte[]
             Cursor cursor = getBdbDatabase().openCursor(null, null);
             return new BdbKeysIterator(cursor);
         } catch(DatabaseException e) {
-            logger.error(e);
+            logger.error("While retrieving keys", e);
             throw new PersistenceFailureException(e);
         }
     }
@@ -153,7 +153,7 @@ public class BdbStorageEngine implements StorageEngine<ByteArray, byte[], byte[]
 
                 succeeded = truncatePostActions(transaction);
             } catch(DatabaseException e) {
-                logger.error(e);
+                logger.error("While truncating", e);
                 throw new VoldemortException("Failed to truncate Bdb store " + getName(), e);
 
             } finally {
@@ -186,7 +186,8 @@ public class BdbStorageEngine implements StorageEngine<ByteArray, byte[], byte[]
                 attemptAbort(transaction);
             }
         } catch(Exception e) {
-            logger.error(e);
+            logger.error("While " + (succeeded ? "committing" : "aborting") + " transaction "
+                         + transaction, e);
         }
     }
 
@@ -226,7 +227,7 @@ public class BdbStorageEngine implements StorageEngine<ByteArray, byte[], byte[]
             cursor = getBdbDatabase().openCursor(null, null);
             return get(cursor, key, lockMode, serializer);
         } catch(DatabaseException e) {
-            logger.error(e);
+            logger.error("While getting", e);
             throw new PersistenceFailureException(e);
         } finally {
             attemptClose(cursor);
@@ -268,7 +269,7 @@ public class BdbStorageEngine implements StorageEngine<ByteArray, byte[], byte[]
                     result.put(key, values);
             }
         } catch(DatabaseException e) {
-            logger.error(e);
+            logger.error("In getAll", e);
             throw new PersistenceFailureException(e);
         } finally {
             attemptClose(cursor);
@@ -350,7 +351,7 @@ public class BdbStorageEngine implements StorageEngine<ByteArray, byte[], byte[]
 
             succeeded = true;
         } catch(DatabaseException e) {
-            logger.error(e);
+            logger.error("While putting", e);
             throw new PersistenceFailureException(e);
         } finally {
             attemptClose(cursor);
@@ -396,7 +397,7 @@ public class BdbStorageEngine implements StorageEngine<ByteArray, byte[], byte[]
             deletePostActions(transaction, key, deletedVals, remainingVals);
             return !deletedVals.isEmpty();
         } catch(DatabaseException e) {
-            logger.error(e);
+            logger.error("While deleting", e);
             throw new PersistenceFailureException(e);
         } finally {
             try {
@@ -435,7 +436,7 @@ public class BdbStorageEngine implements StorageEngine<ByteArray, byte[], byte[]
                 closeInternal(this.getBdbDatabase());
             }
         } catch(DatabaseException e) {
-            logger.error(e);
+            logger.error("While closing", e);
             throw new PersistenceFailureException("Shutdown failed.", e);
         }
     }
@@ -479,7 +480,7 @@ public class BdbStorageEngine implements StorageEngine<ByteArray, byte[], byte[]
             config.setFast(setFast);
             return this.getBdbDatabase().getStats(config);
         } catch(DatabaseException e) {
-            logger.error(e);
+            logger.error("While retrieving stats", e);
             throw new VoldemortException(e);
         }
     }
@@ -531,7 +532,7 @@ public class BdbStorageEngine implements StorageEngine<ByteArray, byte[], byte[]
                         current = get(keyEntry, valueEntry);
                     isInited = true;
                 } catch(DatabaseException e) {
-                    logger.error(e);
+                    logger.error("While initializaing cursor", e);
                     throw new PersistenceFailureException(e);
                 }
             }
@@ -553,7 +554,7 @@ public class BdbStorageEngine implements StorageEngine<ByteArray, byte[], byte[]
 
                 return previous;
             } catch(DatabaseException e) {
-                logger.error(e);
+                logger.error("While iterating cursor", e);
                 throw new PersistenceFailureException(e);
             }
         }
@@ -567,7 +568,7 @@ public class BdbStorageEngine implements StorageEngine<ByteArray, byte[], byte[]
                 cursor.close();
                 isClosed = true;
             } catch(DatabaseException e) {
-                logger.error(e);
+                logger.error("While closing cursor", e);
             }
         }
 

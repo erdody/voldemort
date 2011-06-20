@@ -135,6 +135,15 @@ public class SecondaryIndexTestUtils {
         }
     }
 
+    /** Creates a byte array with keys k[from] .. k[to] (both inclusive). */
+    private String[] keyRange(int from, int to) {
+        String[] result = new String[to - from + 1];
+        for(int i = 0; i < result.length; i++) {
+            result[i] = "k" + (from + i);
+        }
+        return result;
+    }
+
     /** Full fixture for secondary index testing, applied to the provided Store */
     public void testSecondaryIndex() throws Exception {
         putTestValue("k1", "myData1", 1, new Date(100));
@@ -146,22 +155,25 @@ public class SecondaryIndexTestUtils {
         putTestValue("k6", "myData6", 6, new Date(150));
         putTestValue("k7", "myData7", 100, new Date(150000));
 
+        System.out.println("=============> QUERYING");
+
         assertQueryReturns(query("status", (byte) 1, (byte) 1), "k1", "k4");
         assertQueryReturns(query("status", (byte) 2, (byte) 2), "k2", "k3");
-        assertQueryReturns(query("status", (byte) 1, (byte) 2), "k1", "k2", "k3", "k4");
+        assertQueryReturns(query("status", (byte) 1, (byte) 2), keyRange(1, 4));
+        assertQueryReturns(query("status", (byte) 0, (byte) 1000), keyRange(1, 7));
 
         assertQueryReturns(query("lastmod", new Date(100), new Date(100)), "k1");
         assertQueryReturns(query("lastmod", new Date(101), new Date(102)), "k2", "k3");
         assertQueryReturns(query("lastmod", new Date(103), new Date(105)), "k4");
-        assertQueryReturns(query("lastmod", new Date(90), new Date(110)), "k1", "k2", "k3", "k4");
+        assertQueryReturns(query("lastmod", new Date(90), new Date(110)), keyRange(1, 4));
         assertQueryReturns(query("lastmod", new Date(90), new Date(95)));
         assertQueryReturns(query("lastmod", new Date(104), new Date(105)));
 
         // update a value, and check it's properly reindexed
         putTestValue("k1", "myData1", 3, new Date(115));
-        assertQueryReturns(query("lastmod", new Date(90), new Date(110)), "k2", "k3", "k4");
+        assertQueryReturns(query("lastmod", new Date(90), new Date(110)), keyRange(2, 4));
         assertQueryReturns(query("lastmod", new Date(110), new Date(140)), "k1");
-        assertQueryReturns(query("status", (byte) 1, (byte) 2), "k2", "k3", "k4");
+        assertQueryReturns(query("status", (byte) 1, (byte) 2), keyRange(2, 4));
         assertQueryReturns(query("status", (byte) 3, (byte) 3), "k1");
 
         removeKey("k3");
