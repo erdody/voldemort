@@ -159,7 +159,8 @@ public class VoldemortServer extends AbstractService {
         if(voldemortConfig.isAdminServerEnabled()) {
             Rebalancer rebalancer = null;
             if(voldemortConfig.isEnableRebalanceService()) {
-                RebalancerService rebalancerService = new RebalancerService(metadata,
+                RebalancerService rebalancerService = new RebalancerService(storeRepository,
+                                                                            metadata,
                                                                             voldemortConfig,
                                                                             asyncService,
                                                                             scheduler);
@@ -301,7 +302,6 @@ public class VoldemortServer extends AbstractService {
 
         AdminClient adminClient = RebalanceUtils.createTempAdminClient(voldemortConfig,
                                                                        metadata.getCluster(),
-                                                                       numberOfParallelTransfers * 2,
                                                                        numberOfParallelTransfers * 2);
         try {
             adminClient.restoreDataFromReplications(metadata.getNodeId(), numberOfParallelTransfers);

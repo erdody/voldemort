@@ -51,6 +51,8 @@ import voldemort.cluster.Node;
 import voldemort.cluster.failuredetector.BannagePeriodFailureDetector;
 import voldemort.cluster.failuredetector.FailureDetector;
 import voldemort.cluster.failuredetector.FailureDetectorConfig;
+import voldemort.routing.RoutingStrategy;
+import voldemort.routing.RoutingStrategyFactory;
 import voldemort.routing.RoutingStrategyType;
 import voldemort.secondary.SecondaryIndexTestUtils;
 import voldemort.serialization.SerializerDefinition;
@@ -74,7 +76,7 @@ import voldemort.utils.ByteArray;
 import voldemort.utils.ByteUtils;
 import voldemort.utils.Time;
 import voldemort.utils.Utils;
-import voldemort.versioning.Occured;
+import voldemort.versioning.Occurred;
 import voldemort.versioning.VectorClock;
 import voldemort.versioning.VectorClockInconsistencyResolver;
 import voldemort.versioning.Version;
@@ -92,6 +94,10 @@ import com.google.common.collect.Sets;
  */
 @RunWith(Parameterized.class)
 public class RoutedStoreTest extends AbstractByteArrayStoreTest {
+
+    public static final int BANNAGE_PERIOD = 1000;
+    public static final int SLEEPY_TIME = 81;
+    public static final int OPERATION_TIMEOUT = 60;
 
     private Cluster cluster;
     private final ByteArray aKey;
@@ -412,7 +418,7 @@ public class RoutedStoreTest extends AbstractByteArrayStoreTest {
         List<Versioned<byte[]>> found = store.get(aKey, aTransform);
         assertEquals("Invalid number of items found.", 1, found.size());
         assertEquals("Version not incremented properly",
-                     Occured.BEFORE,
+                     Occurred.BEFORE,
                      copy.compare(found.get(0).getVersion()));
     }
 
@@ -444,8 +450,8 @@ public class RoutedStoreTest extends AbstractByteArrayStoreTest {
                                                        Sets.newHashSet(4, 5, 6, 7),
                                                        zoneReplicationFactor,
                                                        RoutingStrategyType.ZONE_STRATEGY,
-                                                       81,
-                                                       60,
+                                                       SLEEPY_TIME,
+                                                       OPERATION_TIMEOUT,
                                                        VoldemortException.class);
 
         start = System.nanoTime();
@@ -470,13 +476,15 @@ public class RoutedStoreTest extends AbstractByteArrayStoreTest {
         try {
             List<Version> versions = s1.getVersions(new ByteArray("test".getBytes()));
             for(Version version: versions) {
-                assertEquals(version.compare(versioned.getVersion()), Occured.BEFORE);
+                assertEquals(version.compare(versioned.getVersion()), Occurred.BEFORE);
             }
         } finally {
             long elapsed = (System.nanoTime() - start) / Time.NS_PER_MS;
             assertTrue(elapsed + " < " + 81, elapsed < 81);
         }
 
+        // make sure the failure detector adds back any previously failed nodes
+        Thread.sleep(BANNAGE_PERIOD * 2);
         start = System.nanoTime();
         try {
             s1.delete(new ByteArray("test".getBytes()), versioned.getVersion());
@@ -485,13 +493,18 @@ public class RoutedStoreTest extends AbstractByteArrayStoreTest {
             assertTrue(elapsed + " < " + 81, elapsed < 81);
         }
 
+        // make sure sleepy stores processed the delete before checking,
+        // otherwise, we might be bailing
+        // out of the test too early for the delete to be processed.
+        Thread.sleep(SLEEPY_TIME);
         List<ByteArray> keys = Lists.newArrayList(new ByteArray("test".getBytes()),
                                                   new ByteArray("test2".getBytes()));
 
         Map<ByteArray, List<Versioned<byte[]>>> values = s1.getAll(keys, null);
-        for(ByteArray key: values.keySet()) {
-            ByteUtils.compare(values.get(key).get(0).getValue(), new byte[] { 1 });
-        }
+        List<Versioned<byte[]>> results = values.get(new ByteArray("test".getBytes()));
+        assertEquals("\'test\' did not get deleted.", 0, results.size());
+        ByteUtils.compare(values.get(new ByteArray("test2".getBytes())).get(0).getValue(),
+                          new byte[] { 1 });
 
         // Basic put with zone read = 1, zone write = 1
         Store<ByteArray, byte[], byte[]> s2 = getStore(cluster,
@@ -504,7 +517,7 @@ public class RoutedStoreTest extends AbstractByteArrayStoreTest {
                                                        Sets.newHashSet(4, 5, 6, 7),
                                                        zoneReplicationFactor,
                                                        RoutingStrategyType.ZONE_STRATEGY,
-                                                       81,
+                                                       SLEEPY_TIME,
                                                        1000,
                                                        VoldemortException.class);
 
@@ -540,7 +553,6 @@ public class RoutedStoreTest extends AbstractByteArrayStoreTest {
 
         try {
             s2.delete(new ByteArray("test".getBytes()), null);
-            fail("Should have shown exception");
         } catch(InsufficientZoneResponsesException e) {
             /*
              * Why would you want responses from two zones and wait for only one
@@ -549,9 +561,10 @@ public class RoutedStoreTest extends AbstractByteArrayStoreTest {
         }
 
         values = s2.getAll(keys, null);
-        for(ByteArray key: values.keySet()) {
-            ByteUtils.compare(values.get(key).get(0).getValue(), new byte[] { 1 });
-        }
+        results = values.get(new ByteArray("test".getBytes()));
+        assertEquals("\'test\' did not get deleted.", 0, results.size());
+        ByteUtils.compare(values.get(new ByteArray("test2".getBytes())).get(0).getValue(),
+                          new byte[] { 1 });
 
         // Basic put with zone read = 0, zone write = 0 and failures in other
         // dc, but should still work
@@ -583,7 +596,7 @@ public class RoutedStoreTest extends AbstractByteArrayStoreTest {
         try {
             List<Version> versions = s3.getVersions(new ByteArray("test".getBytes()));
             for(Version version: versions) {
-                assertEquals(version.compare(versioned.getVersion()), Occured.BEFORE);
+                assertEquals(version.compare(versioned.getVersion()), Occurred.BEFORE);
             }
         } finally {
             long elapsed = (System.nanoTime() - start) / Time.NS_PER_MS;
@@ -1089,7 +1102,7 @@ public class RoutedStoreTest extends AbstractByteArrayStoreTest {
         for(int i = 0; i < 3; ++i) {
             int id = Iterables.get(cluster.getNodes(), i).getId();
             statTrackingStore = new StatTrackingStore(new InMemoryStorageEngine<ByteArray, byte[], byte[]>("test"),
-                                                                                 null);
+                                                      null);
             subStores.put(id, statTrackingStore);
 
         }
@@ -1223,6 +1236,95 @@ public class RoutedStoreTest extends AbstractByteArrayStoreTest {
         assertEquals(2, versioneds.size());
     }
 
+    @Test
+    public void testPutDeleteZoneRouting() throws Exception {
+        cluster = VoldemortTestConstants.getEightNodeClusterWithZones();
+
+        HashMap<Integer, Integer> zoneReplicationFactor = Maps.newHashMap();
+        zoneReplicationFactor.put(0, 2);
+        zoneReplicationFactor.put(1, 2);
+
+        Versioned<byte[]> versioned = new Versioned<byte[]>(new byte[] { 1 });
+
+        Map<Integer, Store<ByteArray, byte[], byte[]>> subStores = Maps.newHashMap();
+        Set<Integer> sleepy = Sets.newHashSet(4, 5, 6, 7);
+        int count = 0;
+        for(Node n: cluster.getNodes()) {
+            Store<ByteArray, byte[], byte[]> subStore = null;
+
+            if(sleepy != null && sleepy.contains(n.getId()))
+                subStore = new SleepyStore<ByteArray, byte[], byte[]>(81,
+                                                                      new InMemoryStorageEngine<ByteArray, byte[], byte[]>("test"));
+            else
+                subStore = new InMemoryStorageEngine<ByteArray, byte[], byte[]>("test");
+
+            subStores.put(n.getId(), subStore);
+
+            count += 1;
+        }
+
+        setFailureDetector(subStores);
+        StoreDefinition storeDef = ServerTestUtils.getStoreDef("test",
+                                                               1,
+                                                               1,
+                                                               1,
+                                                               1,
+                                                               0,
+                                                               0,
+                                                               zoneReplicationFactor,
+                                                               HintedHandoffStrategyType.PROXIMITY_STRATEGY,
+                                                               RoutingStrategyType.ZONE_STRATEGY);
+        routedStoreThreadPool = Executors.newFixedThreadPool(8);
+        RoutedStoreFactory routedStoreFactory = new RoutedStoreFactory(true,
+                                                                       routedStoreThreadPool,
+                                                                       60);
+
+        Store<ByteArray, byte[], byte[]> s1 = routedStoreFactory.create(cluster,
+                                                                        storeDef,
+                                                                        subStores,
+                                                                        true,
+                                                                        failureDetector);
+
+        RoutingStrategy routingStrategy = new RoutingStrategyFactory().updateRoutingStrategy(storeDef,
+                                                                                             cluster);
+
+        List<Node> nodesRoutedTo = routingStrategy.routeRequest("test".getBytes());
+        long start = System.nanoTime(), elapsed;
+        try {
+            s1.put(new ByteArray("test".getBytes()), versioned, null);
+        } finally {
+            elapsed = (System.nanoTime() - start) / Time.NS_PER_MS;
+            assertTrue(elapsed + " < " + 81, elapsed < 81);
+        }
+
+        Thread.sleep(81 - elapsed);
+
+        for(Node node: nodesRoutedTo) {
+            assertEquals(subStores.get(node.getId())
+                                  .get(new ByteArray("test".getBytes()), null)
+                                  .get(0), versioned);
+        }
+
+        // make sure the failure detector adds back any previously failed nodes
+        Thread.sleep(BANNAGE_PERIOD + 100);
+        start = System.nanoTime();
+        try {
+            s1.delete(new ByteArray("test".getBytes()), versioned.getVersion());
+        } finally {
+            elapsed = (System.nanoTime() - start) / Time.NS_PER_MS;
+            assertTrue(elapsed + " < " + 81, elapsed < 81);
+        }
+
+        Thread.sleep(81 - elapsed);
+
+        for(Node node: nodesRoutedTo) {
+            assertEquals(subStores.get(node.getId())
+                                  .get(new ByteArray("test".getBytes()), null)
+                                  .size(), 0);
+        }
+
+    }
+
     private void assertOperationalNodes(int expected) {
         int found = 0;
         for(Node n: cluster.getNodes())
@@ -1239,7 +1341,7 @@ public class RoutedStoreTest extends AbstractByteArrayStoreTest {
             failureDetector.destroy();
 
         FailureDetectorConfig failureDetectorConfig = new FailureDetectorConfig().setImplementationClassName(failureDetectorClass.getName())
-                                                                                 .setBannagePeriod(1000)
+                                                                                 .setBannagePeriod(BANNAGE_PERIOD)
                                                                                  .setNodes(cluster.getNodes())
                                                                                  .setStoreVerifier(create(subStores));
         failureDetector = create(failureDetectorConfig, false);

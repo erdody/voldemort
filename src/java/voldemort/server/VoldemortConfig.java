@@ -22,6 +22,7 @@ import java.io.Serializable;
 import java.util.List;
 import java.util.Properties;
 
+import org.mockito.internal.verification.Times;
 import voldemort.client.protocol.RequestFormatType;
 import voldemort.cluster.failuredetector.FailureDetectorConfig;
 import voldemort.server.scheduler.slop.StreamingSlopPusherJob;
@@ -71,10 +72,14 @@ public class VoldemortConfig implements Serializable {
     private int bdbCleanerMinFileUtilization;
     private int bdbCleanerMinUtilization;
     private int bdbCleanerLookAheadCacheSize;
-
-    private boolean bdbCursorPreload;
+    private boolean bdbCheckpointerHighPriority;
+    private int bdbCleanerMaxBatchFiles;
+    private boolean bdbReadUncommitted;
     private int bdbCleanerThreads;
     private long bdbLockTimeoutMs;
+    private int bdbLockNLockTables;
+    private boolean bdbFairLatches;
+    private long bdbStatsCacheTtlMs;
 
     private String mysqlUsername;
     private String mysqlPassword;
@@ -85,6 +90,7 @@ public class VoldemortConfig implements Serializable {
     private int readOnlyBackups;
     private String readOnlyStorageDir;
     private String readOnlySearchStrategy;
+    private int readOnlyDeleteBackupTimeMs;
 
     private int coreThreads;
     private int maxThreads;
@@ -124,11 +130,9 @@ public class VoldemortConfig implements Serializable {
     private boolean enableStatTracking;
     private boolean enableServerRouting;
     private boolean enableMetadataChecking;
-    private boolean enableRedirectRouting;
     private boolean enableNetworkClassLoader;
     private boolean enableGossip;
     private boolean enableRebalanceService;
-    private boolean enableGrandfather;
 
     private List<String> storageConfigurations;
 
@@ -137,7 +141,7 @@ public class VoldemortConfig implements Serializable {
     private String slopStoreType;
     private String pusherType;
     private long slopFrequencyMs;
-    private final long repairFrequencyMs;
+    private long repairStartMs;
     private long slopMaxWriteBytesPerSec;
     private long slopMaxReadBytesPerSec;
     private int slopBatchSize;
@@ -166,9 +170,9 @@ public class VoldemortConfig implements Serializable {
     private int retentionCleanupScheduledPeriodInHour;
 
     private int maxRebalancingAttempt;
-    private int rebalancingTimeoutInSeconds;
-    private int rebalancingServicePeriod;
+    private long rebalancingTimeoutSec;
     private int maxParallelStoresRebalancing;
+    private boolean rebalancingOptimization;
 
     public VoldemortConfig(Properties props) {
         this(new Props(props));
@@ -202,9 +206,12 @@ public class VoldemortConfig implements Serializable {
         this.bdbCleanerThreads = props.getInt("bdb.cleaner.threads", 1);
         this.bdbCleanerLookAheadCacheSize = props.getInt("bdb.cleaner.lookahead.cache.size", 8192);
         this.bdbLockTimeoutMs = props.getLong("bdb.lock.timeout.ms", 500);
-
-        // enabling preload make cursor slow for insufficient bdb cache size.
-        this.bdbCursorPreload = props.getBoolean("bdb.cursor.preload", false);
+        this.bdbLockNLockTables = props.getInt("bdb.lock.nLockTables", 1);
+        this.bdbFairLatches = props.getBoolean("bdb.fair.latches", false);
+        this.bdbCheckpointerHighPriority = props.getBoolean("bdb.checkpointer.high.priority", false);
+        this.bdbCleanerMaxBatchFiles = props.getInt("bdb.cleaner.max.batch.files", 0);
+        this.bdbReadUncommitted = props.getBoolean("bdb.lock.read_uncommitted", true);
+        this.bdbStatsCacheTtlMs = props.getLong("bdb.stats.cache.ttl.ms", 5 * Time.MS_PER_SECOND);
 
         this.readOnlyBackups = props.getInt("readonly.backups", 1);
         this.readOnlySearchStrategy = props.getString("readonly.search.strategy",
@@ -212,6 +219,7 @@ public class VoldemortConfig implements Serializable {
         this.readOnlyStorageDir = props.getString("readonly.data.directory", this.dataDirectory
                                                                              + File.separator
                                                                              + "read-only");
+        this.readOnlyDeleteBackupTimeMs = props.getInt("readonly.delete.backup.ms", 0);
 
         this.mysqlUsername = props.getString("mysql.user", "root");
         this.mysqlPassword = props.getString("mysql.password", "");
@@ -234,8 +242,8 @@ public class VoldemortConfig implements Serializable {
         this.streamMaxWriteBytesPerSec = props.getBytes("stream.write.byte.per.sec",
                                                         10 * 1000 * 1000);
 
-        this.socketTimeoutMs = props.getInt("socket.timeout.ms", 4000);
-        this.socketBufferSize = (int) props.getBytes("socket.buffer.size", 32 * 1024);
+        this.socketTimeoutMs = props.getInt("socket.timeout.ms", 5000);
+        this.socketBufferSize = (int) props.getBytes("socket.buffer.size", 64 * 1024);
         this.socketKeepAlive = props.getBoolean("socket.keepalive", false);
 
         this.useNioConnector = props.getBoolean("enable.nio.connector", false);
@@ -247,11 +255,11 @@ public class VoldemortConfig implements Serializable {
                                                                           .availableProcessors()));
 
         this.clientSelectors = props.getInt("client.selectors", 4);
-        this.clientMaxConnectionsPerNode = props.getInt("client.max.connections.per.node", 5);
-        this.clientConnectionTimeoutMs = props.getInt("client.connection.timeout.ms", 400);
-        this.clientRoutingTimeoutMs = props.getInt("client.routing.timeout.ms", 5000);
-        this.clientMaxThreads = props.getInt("client.max.threads", 100);
-        this.clientThreadIdleMs = props.getInt("client.thread.idle.ms", 5000);
+        this.clientMaxConnectionsPerNode = props.getInt("client.max.connections.per.node", 50);
+        this.clientConnectionTimeoutMs = props.getInt("client.connection.timeout.ms", 500);
+        this.clientRoutingTimeoutMs = props.getInt("client.routing.timeout.ms", 15000);
+        this.clientMaxThreads = props.getInt("client.max.threads", 500);
+        this.clientThreadIdleMs = props.getInt("client.thread.idle.ms", 100000);
         this.clientMaxQueuedRequests = props.getInt("client.max.queued.requests", 1000);
 
         this.enableHttpServer = props.getBoolean("http.enable", true);
@@ -265,10 +273,8 @@ public class VoldemortConfig implements Serializable {
         this.enableStatTracking = props.getBoolean("enable.stat.tracking", true);
         this.enableServerRouting = props.getBoolean("enable.server.routing", true);
         this.enableMetadataChecking = props.getBoolean("enable.metadata.checking", true);
-        this.enableRedirectRouting = props.getBoolean("enable.redirect.routing", true);
         this.enableGossip = props.getBoolean("enable.gossip", false);
         this.enableRebalanceService = props.getBoolean("enable.rebalancing", true);
-        this.enableGrandfather = props.getBoolean("enable.grandfather", true);
         this.enableRepair = props.getBoolean("enable.repair", false);
 
         this.gossipInterval = props.getInt("gossip.interval.ms", 30 * 1000);
@@ -277,7 +283,7 @@ public class VoldemortConfig implements Serializable {
         this.slopMaxReadBytesPerSec = props.getBytes("slop.read.byte.per.sec", 10 * 1000 * 1000);
         this.slopStoreType = props.getString("slop.store.engine", BdbStorageConfiguration.TYPE_NAME);
         this.slopFrequencyMs = props.getLong("slop.frequency.ms", 5 * 60 * 1000);
-        this.repairFrequencyMs = props.getLong("repair.frequency.ms", 5 * 60 * 1000);
+        this.repairStartMs = props.getLong("repair.start.ms", 24 * 60 * 60 * 1000);
         this.slopBatchSize = props.getInt("slop.batch.size", 100);
         this.pusherType = props.getString("pusher.type", StreamingSlopPusherJob.TYPE_NAME);
         this.slopZonesDownToTerminate = props.getInt("slop.zones.terminate", 0);
@@ -310,9 +316,9 @@ public class VoldemortConfig implements Serializable {
 
         // rebalancing parameters
         this.maxRebalancingAttempt = props.getInt("max.rebalancing.attempts", 3);
-        this.rebalancingTimeoutInSeconds = props.getInt("rebalancing.timeout.seconds", 24 * 60 * 60);
-        this.rebalancingServicePeriod = props.getInt("rebalancing.service.period.ms", 1000 * 60);
+        this.rebalancingTimeoutSec = props.getLong("rebalancing.timeout.seconds", 10 * 24 * 60 * 60);
         this.maxParallelStoresRebalancing = props.getInt("max.parallel.stores.rebalancing", 3);
+        this.rebalancingOptimization = props.getBoolean("rebalancing.optimization", true);
 
         this.failureDetectorImplementation = props.getString("failuredetector.implementation",
                                                              FailureDetectorConfig.DEFAULT_IMPLEMENTATION_CLASS_NAME);
@@ -541,6 +547,44 @@ public class VoldemortConfig implements Serializable {
     }
 
     /**
+     * If true, the checkpointer uses more resources in order to complete the
+     * checkpoint in a shorter time interval.
+     * 
+     * <ul>
+     * <li>property: "bdb.checkpointer.high.priority"</li>
+     * <li>default: false</li>
+     * </ul>
+     */
+    public boolean getBdbCheckpointerHighPriority() {
+        return bdbCheckpointerHighPriority;
+    }
+
+    public final void setBdbCheckpointerHighPriority(boolean bdbCheckpointerHighPriority) {
+        this.bdbCheckpointerHighPriority = bdbCheckpointerHighPriority;
+    }
+
+    /**
+     * The maximum number of log files in the cleaner's backlog, or zero if
+     * there is no limit
+     * 
+     * <ul>
+     * <li>property: "bdb.cleaner.max.batch.files"</li>
+     * <li>default: 0</li>
+     * <li>minimum: 0</li>
+     * <li>maximum: 100000</li>
+     * </ul>
+     */
+    public int getBdbCleanerMaxBatchFiles() {
+        return bdbCleanerMaxBatchFiles;
+    }
+
+    public final void setBdbCleanerMaxBatchFiles(int bdbCleanerMaxBatchFiles) {
+        if(bdbCleanerMaxBatchFiles < 0 || bdbCleanerMaxBatchFiles > 100000)
+            throw new IllegalArgumentException("bdbCleanerMaxBatchFiles should be between 0 and 100000 (both inclusive)");
+        this.bdbCleanerMaxBatchFiles = bdbCleanerMaxBatchFiles;
+    }
+
+    /**
      * 
      * The number of cleaner threads
      * 
@@ -593,6 +637,33 @@ public class VoldemortConfig implements Serializable {
         this.bdbLockTimeoutMs = bdbLockTimeoutMs;
     }
 
+    public void setBdbLockNLockTables(int bdbLockNLockTables) {
+        if(bdbLockNLockTables < 1 || bdbLockNLockTables > 32767)
+            throw new IllegalArgumentException("bdbLockNLockTables should be greater than 0 and "
+                                               + "less than 32767");
+        this.bdbLockNLockTables = bdbLockNLockTables;
+    }
+
+    public int getBdbLockNLockTables() {
+        return bdbLockNLockTables;
+    }
+
+    public boolean getBdbFairLatches() {
+        return bdbFairLatches;
+    }
+
+    public void setBdbFairLatches(boolean bdbFairLatches) {
+        this.bdbFairLatches = bdbFairLatches;
+    }
+
+    public boolean getBdbReadUncommitted() {
+        return bdbReadUncommitted;
+    }
+
+    public void setBdbReadUncommitted(boolean bdbReadUncommitted) {
+        this.bdbReadUncommitted = bdbReadUncommitted;
+    }
+
     /**
      * 
      * The cleaner will keep the total disk space utilization percentage above
@@ -625,21 +696,6 @@ public class VoldemortConfig implements Serializable {
 
     public void setBdbBtreeFanout(int bdbBtreeFanout) {
         this.bdbBtreeFanout = bdbBtreeFanout;
-    }
-
-    /**
-     * Do we preload the cursor or not? The advantage of preloading for cursor
-     * is faster streaming performance, as entries are fetched in disk order.
-     * Incidentally, pre-loading is only a side-effect of what we're really
-     * trying to do: fetch in disk (as opposed to key) order, but there doesn't
-     * seem to be an easy/intuitive way to do for BDB JE.
-     */
-    public boolean getBdbCursorPreload() {
-        return this.bdbCursorPreload;
-    }
-
-    public void setBdbCursorPreload(boolean bdbCursorPreload) {
-        this.bdbCursorPreload = bdbCursorPreload;
     }
 
     /**
@@ -861,8 +917,12 @@ public class VoldemortConfig implements Serializable {
         this.slopFrequencyMs = slopFrequencyMs;
     }
 
-    public long getRepairFrequencyMs() {
-        return this.repairFrequencyMs;
+    public long getRepairStartMs() {
+        return this.repairStartMs;
+    }
+
+    public void setRepairStartMs(long repairStartMs) {
+        this.repairStartMs = repairStartMs;
     }
 
     public void setSocketTimeoutMs(int socketTimeoutMs) {
@@ -967,14 +1027,6 @@ public class VoldemortConfig implements Serializable {
         this.enableRepair = enableRepair;
     }
 
-    public boolean isGrandfatherEnabled() {
-        return this.enableGrandfather;
-    }
-
-    public void setGrandfather(boolean enableGrandfather) {
-        this.enableGrandfather = enableGrandfather;
-    }
-
     public boolean isVerboseLoggingEnabled() {
         return this.enableVerboseLogging;
     }
@@ -999,14 +1051,6 @@ public class VoldemortConfig implements Serializable {
         this.enableMetadataChecking = enableMetadataChecking;
     }
 
-    public boolean isRedirectRoutingEnabled() {
-        return enableRedirectRouting;
-    }
-
-    public void setEnableRedirectRouting(boolean enableRedirectRouting) {
-        this.enableRedirectRouting = enableRedirectRouting;
-    }
-
     public long getBdbCheckpointBytes() {
         return this.bdbCheckpointBytes;
     }
@@ -1021,6 +1065,14 @@ public class VoldemortConfig implements Serializable {
 
     public void setBdbCheckpointMs(long bdbCheckpointMs) {
         this.bdbCheckpointMs = bdbCheckpointMs;
+    }
+
+    public long getBdbStatsCacheTtlMs() {
+        return this.bdbStatsCacheTtlMs;
+    }
+
+    public void setBdbStatsCacheTtlMs(long statsCacheTtlMs) {
+        this.bdbStatsCacheTtlMs = statsCacheTtlMs;
     }
 
     public int getSchedulerThreads() {
@@ -1045,6 +1097,21 @@ public class VoldemortConfig implements Serializable {
 
     public void setReadOnlyBackups(int readOnlyBackups) {
         this.readOnlyBackups = readOnlyBackups;
+    }
+
+    /**
+     * Amount of time we will wait before we start deleting the backup. This
+     * happens during swaps when old backups need to be deleted. Some delay is
+     * required so that we don't cause a sudden increase of IOPs during swap.
+     * 
+     * @return The start time in ms
+     */
+    public int getReadOnlyDeleteBackupMs() {
+        return readOnlyDeleteBackupTimeMs;
+    }
+
+    public void setReadOnlyDeleteBackupMs(int readOnlyDeleteBackupTimeMs) {
+        this.readOnlyDeleteBackupTimeMs = readOnlyDeleteBackupTimeMs;
     }
 
     public boolean isBdbWriteTransactionsEnabled() {
@@ -1259,12 +1326,12 @@ public class VoldemortConfig implements Serializable {
         return this.maxRebalancingAttempt;
     }
 
-    public int getRebalancingTimeout() {
-        return rebalancingTimeoutInSeconds;
+    public long getRebalancingTimeoutSec() {
+        return rebalancingTimeoutSec;
     }
 
-    public void setRebalancingTimeout(int rebalancingTimeout) {
-        this.rebalancingTimeoutInSeconds = rebalancingTimeout;
+    public void setRebalancingTimeoutSec(long rebalancingTimeoutSec) {
+        this.rebalancingTimeoutSec = rebalancingTimeoutSec;
     }
 
     public VoldemortConfig(int nodeId, String voldemortHome) {
@@ -1295,10 +1362,6 @@ public class VoldemortConfig implements Serializable {
         this.enableNetworkClassLoader = enableNetworkClassLoader;
     }
 
-    public int getRebalancingServicePeriod() {
-        return rebalancingServicePeriod;
-    }
-
     public void setEnableRebalanceService(boolean enableRebalanceService) {
         this.enableRebalanceService = enableRebalanceService;
     }
@@ -1313,6 +1376,14 @@ public class VoldemortConfig implements Serializable {
 
     public void setMaxParallelStoresRebalancing(int maxParallelStoresRebalancing) {
         this.maxParallelStoresRebalancing = maxParallelStoresRebalancing;
+    }
+
+    public boolean getRebalancingOptimization() {
+        return rebalancingOptimization;
+    }
+
+    public void setMaxParallelStoresRebalancing(boolean rebalancingOptimization) {
+        this.rebalancingOptimization = rebalancingOptimization;
     }
 
 }

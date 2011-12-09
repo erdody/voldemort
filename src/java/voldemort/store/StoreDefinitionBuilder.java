@@ -20,6 +20,7 @@ public class StoreDefinitionBuilder {
 
     private String name = null;
     private String type = null;
+    private String description = null;
     private SerializerDefinition keySerializer = null;
     private SerializerDefinition valueSerializer = null;
     private SerializerDefinition transformsSerializer = null;
@@ -40,6 +41,7 @@ public class StoreDefinitionBuilder {
     private String serializerFactory = null;
     private HintedHandoffStrategyType hintedHandoffStrategy = null;
     private Integer hintPrefListSize = null;
+    private List<String> owners = null;
     private List<SecondaryIndexDefinition> secondaryIndexDefinitions = Collections.emptyList();
 
     public String getName() {
@@ -57,6 +59,15 @@ public class StoreDefinitionBuilder {
 
     public StoreDefinitionBuilder setType(String type) {
         this.type = Utils.notNull(type);
+        return this;
+    }
+
+    public String getDescription() {
+        return description;
+    }
+
+    public StoreDefinitionBuilder setDescription(String description) {
+        this.description = description;
         return this;
     }
 
@@ -256,6 +267,15 @@ public class StoreDefinitionBuilder {
         return this;
     }
 
+    public List<String> getOwners() {
+        return owners;
+    }
+
+    public StoreDefinitionBuilder setOwners(List<String> owners) {
+        this.owners = owners;
+        return this;
+    }
+
     public StoreDefinitionBuilder setSecondaryIndexes(List<SecondaryIndexDefinition> secondaryIndexDefinitions) {
         this.secondaryIndexDefinitions = secondaryIndexDefinitions;
         return this;
@@ -268,6 +288,7 @@ public class StoreDefinitionBuilder {
     public StoreDefinition build() {
         return new StoreDefinition(this.getName(),
                                    this.getType(),
+                                   this.getDescription(),
                                    this.getKeySerializer(),
                                    this.getValueSerializer(),
                                    this.getTransformsSerializer(),
@@ -288,6 +309,7 @@ public class StoreDefinitionBuilder {
                                    this.getSerializerFactory(),
                                    this.getHintedHandoffStrategy(),
                                    this.getHintPrefListSize(),
+                                   this.getOwners(),
                                    this.getSecondaryIndexes());
     }
 

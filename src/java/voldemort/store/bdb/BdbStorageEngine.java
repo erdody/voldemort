@@ -37,13 +37,14 @@ import voldemort.store.StorageInitializationException;
 import voldemort.store.Store;
 import voldemort.store.StoreCapabilityType;
 import voldemort.store.StoreUtils;
+import voldemort.store.bdb.stats.BdbEnvironmentStats;
 import voldemort.utils.ByteArray;
 import voldemort.utils.ByteUtils;
 import voldemort.utils.ClosableIterator;
 import voldemort.utils.Pair;
 import voldemort.utils.Utils;
 import voldemort.versioning.ObsoleteVersionException;
-import voldemort.versioning.Occured;
+import voldemort.versioning.Occurred;
 import voldemort.versioning.VectorClock;
 import voldemort.versioning.Version;
 import voldemort.versioning.Versioned;
@@ -57,7 +58,6 @@ import com.sleepycat.je.DatabaseStats;
 import com.sleepycat.je.Environment;
 import com.sleepycat.je.LockMode;
 import com.sleepycat.je.OperationStatus;
-import com.sleepycat.je.PreloadConfig;
 import com.sleepycat.je.StatsConfig;
 import com.sleepycat.je.Transaction;
 
@@ -76,18 +76,15 @@ public class BdbStorageEngine implements StorageEngine<ByteArray, byte[], byte[]
     protected final Environment environment;
     private final VersionedSerializer<byte[]> versionedSerializer;
     private final AtomicBoolean isOpen;
-    private final boolean cursorPreload;
+    private final LockMode readLockMode;
     private final Serializer<Version> versionSerializer;
+    private final BdbEnvironmentStats bdbEnvironmentStats;
     private final AtomicBoolean isTruncating = new AtomicBoolean(false);
-
-    public BdbStorageEngine(String name, Environment environment, Database database) {
-        this(name, environment, database, false);
-    }
 
     public BdbStorageEngine(String name,
                             Environment environment,
                             Database database,
-                            boolean cursorPreload) {
+                            BdbRuntimeConfig config) {
         this.name = Utils.notNull(name);
         this.bdbDatabase = Utils.notNull(database);
         this.environment = Utils.notNull(environment);
@@ -103,7 +100,8 @@ public class BdbStorageEngine implements StorageEngine<ByteArray, byte[], byte[]
             }
         };
         this.isOpen = new AtomicBoolean(true);
-        this.cursorPreload = cursorPreload;
+        this.readLockMode = config.getLockMode();
+        this.bdbEnvironmentStats = new BdbEnvironmentStats(environment, config.getStatsCacheTtlMs());
     }
 
     public String getName() {
@@ -112,12 +110,6 @@ public class BdbStorageEngine implements StorageEngine<ByteArray, byte[], byte[]
 
     public ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> entries() {
         try {
-            if(cursorPreload) {
-                PreloadConfig preloadConfig = new PreloadConfig();
-                preloadConfig.setLoadLNs(true);
-                getBdbDatabase().preload(preloadConfig);
-            }
-
             Cursor cursor = getBdbDatabase().openCursor(null, null);
             return new BdbEntriesIterator(cursor);
         } catch(DatabaseException e) {
@@ -208,12 +200,12 @@ public class BdbStorageEngine implements StorageEngine<ByteArray, byte[], byte[]
     }
 
     public List<Version> getVersions(ByteArray key) {
-        return get(key, null, LockMode.READ_UNCOMMITTED, versionSerializer);
+        return get(key, null, readLockMode, versionSerializer);
     }
 
     public List<Versioned<byte[]>> get(ByteArray key, byte[] transforms)
             throws PersistenceFailureException {
-        return get(key, transforms, LockMode.READ_UNCOMMITTED, versionedSerializer);
+        return get(key, transforms, readLockMode, versionedSerializer);
     }
 
     private <T> List<T> get(ByteArray key,
@@ -261,10 +253,7 @@ public class BdbStorageEngine implements StorageEngine<ByteArray, byte[], byte[]
         try {
             cursor = getBdbDatabase().openCursor(null, null);
             for(ByteArray key: keys) {
-                List<Versioned<byte[]>> values = get(cursor,
-                                                     key,
-                                                     LockMode.READ_UNCOMMITTED,
-                                                     versionedSerializer);
+                List<Versioned<byte[]>> values = get(cursor, key, readLockMode, versionedSerializer);
                 if(!values.isEmpty())
                     result.put(key, values);
             }
@@ -323,15 +312,15 @@ public class BdbStorageEngine implements StorageEngine<ByteArray, byte[], byte[]
                                                                                                                                                                 valueEntry,
                                                                                                                                                                 LockMode.RMW)) {
                 VectorClock clock = new VectorClock(valueEntry.getData());
-                Occured occured = value.getVersion().compare(clock);
-                if(occured == Occured.BEFORE) {
+                Occurred occured = value.getVersion().compare(clock);
+                if(occured == Occurred.BEFORE) {
                     throw new ObsoleteVersionException("Key "
                                                        + new String(hexCodec.encode(key.get()))
                                                        + " "
                                                        + value.getVersion().toString()
                                                        + " is obsolete, it is no greater than the current version of "
                                                        + clock + ".");
-                } else if(occured == Occured.AFTER) {
+                } else if(occured == Occurred.AFTER) {
                     // best effort delete of obsolete previous value!
                     deletedVals.add(valueEntry.getData());
                     cursor.delete();
@@ -386,7 +375,7 @@ public class BdbStorageEngine implements StorageEngine<ByteArray, byte[], byte[]
             List<byte[]> remainingVals = Lists.newArrayList();
             while(status == OperationStatus.SUCCESS) {
                 // if version is null no comparison is necessary
-                if(new VectorClock(valueEntry.getData()).compare(version) == Occured.BEFORE) {
+                if(new VectorClock(valueEntry.getData()).compare(version) == Occurred.BEFORE) {
                     cursor.delete();
                     deletedVals.add(valueEntry.getData());
                 } else {
@@ -485,10 +474,20 @@ public class BdbStorageEngine implements StorageEngine<ByteArray, byte[], byte[]
         }
     }
 
-    @JmxOperation(description = "A variety of stats about the BDB for this store.")
+    @JmxOperation(description = "A variety of quickly computable stats about the BDB for this store.")
     public String getBdbStats() {
-        String stats = getStats(false).toString();
-        return stats;
+        return getBdbStats(true);
+    }
+
+    @JmxOperation(description = "A variety of stats about the BDB for this store.")
+    public String getBdbStats(boolean fast) {
+        String dbStats = getStats(fast).toString();
+        logger.debug(dbStats);
+        return dbStats;
+    }
+
+    public BdbEnvironmentStats getBdbEnvironmentStats() {
+        return bdbEnvironmentStats;
     }
 
     protected static abstract class BdbIterator<T> implements ClosableIterator<T> {
@@ -620,6 +619,10 @@ public class BdbStorageEngine implements StorageEngine<ByteArray, byte[], byte[]
                 throws DatabaseException {
             return cursor.getNext(key, value, LockMode.READ_UNCOMMITTED);
         }
+    }
+
+    public boolean isPartitionAware() {
+        return false;
     }
 
     public Set<ByteArray> getAllKeys(RangeQuery query) {

@@ -168,6 +168,10 @@ public class ViewStorageEngine implements StorageEngine<ByteArray, byte[], byte[
         }
     }
 
+    public boolean isPartitionAware() {
+        return target.isPartitionAware();
+    }
+
     public Set<ByteArray> getAllKeys(RangeQuery query) {
         throw new UnsupportedOperationException("No secondary index support.");
     }

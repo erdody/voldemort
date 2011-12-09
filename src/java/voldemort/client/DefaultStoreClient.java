@@ -86,7 +86,7 @@ public class DefaultStoreClient<K, V> implements StoreClient<K, V> {
 
     @JmxOperation(description = "bootstrap metadata from the cluster.")
     public void bootStrap() {
-        logger.info("bootstrapping metadata for store " + this.storeName);
+        logger.info("Bootstrapping metadata for store " + this.storeName);
         this.store = storeFactory.getRawStore(storeName, resolver);
     }
 
@@ -102,6 +102,8 @@ public class DefaultStoreClient<K, V> implements StoreClient<K, V> {
             try {
                 return store.delete(key, version);
             } catch(InvalidMetadataException e) {
+                logger.info("Received invalid metadata exception during delete [  "
+                            + e.getMessage() + " ] on store '" + storeName + "'. Rebootstrapping");
                 bootStrap();
             }
         }
@@ -131,6 +133,8 @@ public class DefaultStoreClient<K, V> implements StoreClient<K, V> {
                 List<Versioned<V>> items = store.get(key, null);
                 return getItemOrThrow(key, defaultValue, items);
             } catch(InvalidMetadataException e) {
+                logger.info("Received invalid metadata exception during get [  " + e.getMessage()
+                            + " ] on store '" + storeName + "'. Rebootstrapping");
                 bootStrap();
             }
         }
@@ -144,6 +148,8 @@ public class DefaultStoreClient<K, V> implements StoreClient<K, V> {
                 List<Versioned<V>> items = store.get(key, transform);
                 return getItemOrThrow(key, defaultValue, items);
             } catch(InvalidMetadataException e) {
+                logger.info("Received invalid metadata exception during get [  " + e.getMessage()
+                            + " ] on store '" + storeName + "'. Rebootstrapping");
                 bootStrap();
             }
         }
@@ -156,6 +162,8 @@ public class DefaultStoreClient<K, V> implements StoreClient<K, V> {
             try {
                 return store.getVersions(key);
             } catch(InvalidMetadataException e) {
+                logger.info("Received invalid metadata exception during getVersions [  "
+                            + e.getMessage() + " ] on store '" + storeName + "'. Rebootstrapping");
                 bootStrap();
             }
         }
@@ -187,6 +195,8 @@ public class DefaultStoreClient<K, V> implements StoreClient<K, V> {
                 items = store.getAll(keys, null);
                 break;
             } catch(InvalidMetadataException e) {
+                logger.info("Received invalid metadata exception during getAll [  "
+                            + e.getMessage() + " ] on store '" + storeName + "'. Rebootstrapping");
                 bootStrap();
             }
         }
@@ -199,7 +209,7 @@ public class DefaultStoreClient<K, V> implements StoreClient<K, V> {
         return result;
     }
 
-    public void put(K key, V value) {
+    public Version put(K key, V value) {
         List<Version> versions = getVersions(key);
         Versioned<V> versioned;
         if(versions.isEmpty())
@@ -213,16 +223,18 @@ public class DefaultStoreClient<K, V> implements StoreClient<K, V> {
             else
                 versioned.setObject(value);
         }
-        put(key, versioned);
+        return put(key, versioned);
     }
 
-    public void put(K key, Versioned<V> versioned, Object transform)
+    public Version put(K key, Versioned<V> versioned, Object transform)
             throws ObsoleteVersionException {
         for(int attempts = 0; attempts < this.metadataRefreshAttempts; attempts++) {
             try {
                 store.put(key, versioned, transform);
-                return;
+                return versioned.getVersion();
             } catch(InvalidMetadataException e) {
+                logger.info("Received invalid metadata exception during put [  " + e.getMessage()
+                            + " ] on store '" + storeName + "'. Rebootstrapping");
                 bootStrap();
             }
         }
@@ -239,13 +251,15 @@ public class DefaultStoreClient<K, V> implements StoreClient<K, V> {
         }
     }
 
-    public void put(K key, Versioned<V> versioned) throws ObsoleteVersionException {
+    public Version put(K key, Versioned<V> versioned) throws ObsoleteVersionException {
 
         for(int attempts = 0; attempts < this.metadataRefreshAttempts; attempts++) {
             try {
                 store.put(key, versioned, null);
-                return;
+                return versioned.getVersion();
             } catch(InvalidMetadataException e) {
+                logger.info("Received invalid metadata exception during put [  " + e.getMessage()
+                            + " ] on store '" + storeName + "'. Rebootstrapping");
                 bootStrap();
             }
         }
@@ -312,6 +326,8 @@ public class DefaultStoreClient<K, V> implements StoreClient<K, V> {
                 items = store.getAll(keys, transforms);
                 break;
             } catch(InvalidMetadataException e) {
+                logger.info("Received invalid metadata exception during getAll [  "
+                            + e.getMessage() + " ] on store '" + storeName + "'. Rebootstrapping");
                 bootStrap();
             }
         }
@@ -324,7 +340,7 @@ public class DefaultStoreClient<K, V> implements StoreClient<K, V> {
         return result;
     }
 
-    public void put(K key, V value, Object transforms) {
+    public Version put(K key, V value, Object transforms) {
         List<Version> versions = getVersions(key);
         Versioned<V> versioned;
         if(versions.isEmpty())
@@ -338,7 +354,7 @@ public class DefaultStoreClient<K, V> implements StoreClient<K, V> {
             else
                 versioned.setObject(value);
         }
-        put(key, versioned, transforms);
+        return put(key, versioned, transforms);
 
     }
 

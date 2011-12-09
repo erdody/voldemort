@@ -20,11 +20,11 @@ package voldemort.store.bdb;
 public class BdbStorageEngineSITest extends BdbStorageEngineTest {
 
     @Override
-    protected BdbStorageEngine createBdbStorageEngine() {
+    protected BdbStorageEngine createBdbStorageEngine(BdbRuntimeConfig runtimeConfig) {
         return new BdbStorageEngineSI("test",
                                       database.getEnvironment(),
                                       database,
-                                      false,
+                                      runtimeConfig,
                                       secIdxTestUtils.getSecIdxProcessor());
     }
 

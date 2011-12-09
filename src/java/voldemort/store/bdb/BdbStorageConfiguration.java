@@ -38,7 +38,6 @@ import com.sleepycat.je.DatabaseException;
 import com.sleepycat.je.Environment;
 import com.sleepycat.je.EnvironmentConfig;
 import com.sleepycat.je.EnvironmentStats;
-import com.sleepycat.je.PreloadConfig;
 import com.sleepycat.je.StatsConfig;
 
 /**
@@ -92,6 +91,15 @@ public class BdbStorageConfiguration implements StorageConfiguration {
                                          Integer.toString(config.getBdbCleanerThreads()));
         environmentConfig.setConfigParam(EnvironmentConfig.CLEANER_LOOK_AHEAD_CACHE_SIZE,
                                          Integer.toString(config.getBdbCleanerLookAheadCacheSize()));
+        environmentConfig.setConfigParam(EnvironmentConfig.LOCK_N_LOCK_TABLES,
+                                         Integer.toString(config.getBdbLockNLockTables()));
+        environmentConfig.setConfigParam(EnvironmentConfig.ENV_FAIR_LATCHES,
+                                         Boolean.toString(config.getBdbFairLatches()));
+        environmentConfig.setConfigParam(EnvironmentConfig.CHECKPOINTER_HIGH_PRIORITY,
+                                         Boolean.toString(config.getBdbCheckpointerHighPriority()));
+        environmentConfig.setConfigParam(EnvironmentConfig.CLEANER_MAX_BATCH_FILES,
+                                         Integer.toString(config.getBdbCleanerMaxBatchFiles()));
+
         environmentConfig.setLockTimeout(config.getBdbLockTimeoutMs(), TimeUnit.MILLISECONDS);
         databaseConfig = new DatabaseConfig();
         databaseConfig.setAllowCreate(true);
@@ -109,15 +117,8 @@ public class BdbStorageConfiguration implements StorageConfiguration {
             try {
                 Environment environment = getEnvironment(storeName);
                 Database db = environment.openDatabase(null, storeName, databaseConfig);
-                if(voldemortConfig.getBdbCursorPreload()) {
-                    PreloadConfig preloadConfig = new PreloadConfig();
-                    preloadConfig.setLoadLNs(true);
-                    db.preload(preloadConfig);
-                }
-                return createStore(storeName,
-                                   environment,
-                                   db,
-                                   voldemortConfig.getBdbCursorPreload());
+                BdbRuntimeConfig runtimeConfig = new BdbRuntimeConfig(voldemortConfig);
+                return createStore(storeName, environment, db, runtimeConfig);
             } catch(DatabaseException d) {
                 throw new StorageInitializationException(d);
             }
@@ -127,8 +128,8 @@ public class BdbStorageConfiguration implements StorageConfiguration {
     protected StorageEngine<ByteArray, byte[], byte[]> createStore(String storeName,
                                                                    Environment environment,
                                                                    Database db,
-                                                                   boolean cursorPreload) {
-        return new BdbStorageEngine(storeName, environment, db, cursorPreload);
+                                                                   BdbRuntimeConfig runtimeConfig) {
+        return new BdbStorageEngine(storeName, environment, db, runtimeConfig);
 
     }
 
@@ -189,9 +190,9 @@ public class BdbStorageConfiguration implements StorageConfiguration {
         return TYPE_NAME;
     }
 
-    public EnvironmentStats getStats(String storeName) {
+    public EnvironmentStats getStats(String storeName, boolean fast) {
         StatsConfig config = new StatsConfig();
-        config.setFast(false);
+        config.setFast(fast);
         try {
             Environment env = getEnvironment(storeName);
             return env.getStats(config);
@@ -200,9 +201,14 @@ public class BdbStorageConfiguration implements StorageConfiguration {
         }
     }
 
-    @JmxOperation(description = "A variety of stats about one BDB environment.")
+    @JmxOperation(description = "A variety of quickly calculated stats about one BDB environment.")
     public String getEnvStatsAsString(String storeName) throws Exception {
-        String envStats = getStats(storeName).toString();
+        return getEnvStatsAsString(storeName, true);
+    }
+
+    @JmxOperation(description = "A variety of stats about one BDB environment.")
+    public String getEnvStatsAsString(String storeName, boolean fast) throws Exception {
+        String envStats = getStats(storeName, fast).toString();
         logger.debug("Bdb Environment stats:\n" + envStats);
         return envStats;
     }

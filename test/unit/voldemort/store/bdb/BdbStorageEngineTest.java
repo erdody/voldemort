@@ -20,6 +20,7 @@ import java.io.File;
 import java.util.List;
 import java.util.Random;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -35,6 +36,7 @@ import voldemort.store.StorageEngine;
 import voldemort.utils.ByteArray;
 import voldemort.utils.ClosableIterator;
 import voldemort.utils.Pair;
+import voldemort.versioning.ObsoleteVersionException;
 import voldemort.versioning.VectorClock;
 import voldemort.versioning.Versioned;
 
@@ -42,8 +44,11 @@ import com.sleepycat.je.Database;
 import com.sleepycat.je.DatabaseConfig;
 import com.sleepycat.je.Environment;
 import com.sleepycat.je.EnvironmentConfig;
+import com.sleepycat.je.LockMode;
 
 public class BdbStorageEngineTest extends AbstractStorageEngineTest {
+
+    private static final LockMode LOCK_MODE = LockMode.DEFAULT;
 
     private Environment environment;
     private EnvironmentConfig envConfig;
@@ -51,6 +56,7 @@ public class BdbStorageEngineTest extends AbstractStorageEngineTest {
     private File tempDir;
     private BdbStorageEngine store;
     private DatabaseConfig databaseConfig;
+    private BdbRuntimeConfig runtimeConfig;
 
     @Override
     protected void setUp() throws Exception {
@@ -66,11 +72,13 @@ public class BdbStorageEngineTest extends AbstractStorageEngineTest {
         databaseConfig.setTransactional(true);
         databaseConfig.setSortedDuplicates(true);
         this.database = environment.openDatabase(null, "test", databaseConfig);
-        this.store = createBdbStorageEngine();
+        this.runtimeConfig = new BdbRuntimeConfig();
+        runtimeConfig.setLockMode(LOCK_MODE);
+        this.store = createBdbStorageEngine(runtimeConfig);
     }
 
-    protected BdbStorageEngine createBdbStorageEngine() {
-        return new BdbStorageEngine("test", this.environment, this.database, false);
+    protected BdbStorageEngine createBdbStorageEngine(BdbRuntimeConfig runtimeConfig) {
+        return new BdbStorageEngine("test", this.environment, this.database, runtimeConfig);
     }
 
     @Override
@@ -98,7 +106,7 @@ public class BdbStorageEngineTest extends AbstractStorageEngineTest {
         this.environment.close();
         this.environment = new Environment(this.tempDir, envConfig);
         this.database = environment.openDatabase(null, "test", databaseConfig);
-        this.store = createBdbStorageEngine();
+        this.store = createBdbStorageEngine(runtimeConfig);
         List<Versioned<byte[]>> vals = store.get(key, null);
         assertEquals(1, vals.size());
         TestUtils.bytesEqual(value.getValue(), vals.get(0).getValue());
@@ -106,29 +114,66 @@ public class BdbStorageEngineTest extends AbstractStorageEngineTest {
 
     public void testEquals() {
         String name = "someName";
-        assertEquals(new BdbStorageEngine(name, environment, database),
-                     new BdbStorageEngine(name, environment, database));
+        assertEquals(new BdbStorageEngine(name, environment, database, runtimeConfig),
+                     new BdbStorageEngine(name, environment, database, runtimeConfig));
     }
 
     public void testNullConstructorParameters() {
         try {
-            new BdbStorageEngine(null, environment, database);
+            new BdbStorageEngine(null, environment, database, runtimeConfig);
         } catch(IllegalArgumentException e) {
             return;
         }
         fail("No exception thrown for null name.");
         try {
-            new BdbStorageEngine("name", null, database);
+            new BdbStorageEngine("name", null, database, runtimeConfig);
         } catch(IllegalArgumentException e) {
             return;
         }
         fail("No exception thrown for null environment.");
         try {
-            new BdbStorageEngine("name", environment, null);
+            new BdbStorageEngine("name", environment, null, runtimeConfig);
         } catch(IllegalArgumentException e) {
             return;
         }
         fail("No exception thrown for null database.");
+    }
+
+    public void testConcurrentReadAndPut() throws Exception {
+        ExecutorService executor = Executors.newFixedThreadPool(10);
+        final CountDownLatch latch = new CountDownLatch(10);
+        final AtomicBoolean returnedEmpty = new AtomicBoolean(false);
+        final byte[] keyBytes = "foo".getBytes();
+        final byte[] valueBytes = getValue();
+        store.put(new ByteArray(keyBytes), new Versioned<byte[]>(valueBytes), null);
+
+        for(int i = 0; i < 10; i++) {
+            executor.submit(new Runnable() {
+
+                public void run() {
+                    try {
+                        for(int j = 0; j < 1000 && !returnedEmpty.get(); j++) {
+                            List<Versioned<byte[]>> vals = store.get(new ByteArray(keyBytes), null);
+                            if(vals.size() == 0 && j > 1)
+                                returnedEmpty.set(true);
+                            else {
+                                VectorClock v = (VectorClock) vals.get(0).getVersion();
+                                v.incrementVersion(0, System.currentTimeMillis());
+                                try {
+                                    store.put(new ByteArray(keyBytes), new Versioned<byte[]>(valueBytes, v), null);
+                                } catch(ObsoleteVersionException e) {
+                                    // Ignore these
+                                }
+                            }
+                        }
+                    } finally {
+                        latch.countDown();
+                    }
+                }
+            });
+        }
+        latch.await();
+        assertFalse("Should not have seen any empty results", returnedEmpty.get());
     }
 
     public void testSimultaneousIterationAndModification() throws Exception {

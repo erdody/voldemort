@@ -52,11 +52,11 @@ public abstract class StoreSwapper {
         invokeSwap(storeName, fetched);
     }
 
-    protected abstract List<String> invokeFetch(String storeName, String basePath, long pushVersion);
+    public abstract List<String> invokeFetch(String storeName, String basePath, long pushVersion);
 
-    protected abstract void invokeSwap(String storeName, List<String> fetchFiles);
+    public abstract void invokeSwap(String storeName, List<String> fetchFiles);
 
-    protected abstract void invokeRollback(String storeName, long pushVersion);
+    public abstract void invokeRollback(String storeName, long pushVersion);
 
     public static void main(String[] args) throws Exception {
         OptionParser parser = new OptionParser();
@@ -111,7 +111,7 @@ public abstract class StoreSwapper {
 
         String clusterStr = FileUtils.readFileToString(new File(clusterXml));
         Cluster cluster = new ClusterMapper().readCluster(new StringReader(clusterStr));
-        ExecutorService executor = Executors.newFixedThreadPool(10);
+        ExecutorService executor = Executors.newFixedThreadPool(cluster.getNumberOfNodes());
         StoreSwapper swapper = null;
         AdminClient adminClient = null;
 

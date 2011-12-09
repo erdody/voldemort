@@ -41,8 +41,7 @@ import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 
 /**
- * Check that the given key is valid
- * 
+ * Group of store utilities
  * 
  */
 public class StoreUtils {
@@ -109,7 +108,7 @@ public class StoreUtils {
      * This is typically used in finally blocks to prevent an exception thrown
      * during close from hiding an exception thrown inside the try.
      * 
-     * @param stream the Closeable to close, may be null.
+     * @param c The Closeable to close, may be null.
      */
     public static void close(Closeable c) {
         if(c != null) {
@@ -125,9 +124,9 @@ public class StoreUtils {
      * Check if the current node is part of routing request based on cluster.xml
      * or throw an exception.
      * 
-     * @param key
-     * @param routingStrategy
-     * @param currentNodeId
+     * @param key The key we are checking
+     * @param routingStrategy The routing strategy
+     * @param currentNode Current node
      */
     public static void assertValidMetadata(ByteArray key,
                                            RoutingStrategy routingStrategy,
@@ -139,9 +138,9 @@ public class StoreUtils {
             }
         }
 
-        throw new InvalidMetadataException("client attempt accessing key belonging to partition:"
+        throw new InvalidMetadataException("Client accessing key belonging to partitions "
                                            + routingStrategy.getPartitionList(key.get())
-                                           + " at Node:" + currentNode);
+                                           + " not present at " + currentNode);
     }
 
     public static <V> List<Version> getVersions(List<Versioned<V>> versioneds) {

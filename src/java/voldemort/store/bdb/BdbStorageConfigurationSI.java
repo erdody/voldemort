@@ -36,7 +36,7 @@ public class BdbStorageConfigurationSI extends BdbStorageConfiguration {
     protected StorageEngine<ByteArray, byte[], byte[]> createStore(String storeName,
                                                                    Environment environment,
                                                                    Database db,
-                                                                   boolean cursorPreload) {
+                                                                   BdbRuntimeConfig runtimeConfig) {
         StoreDefinition storeDef = StoreUtils.getStoreDef(storeDefs, storeName);
         String factoryName = storeDef.getSerializerFactory();
         SerializerFactory serFactory = factoryName == null ? new DefaultSerializerFactory()
@@ -46,7 +46,7 @@ public class BdbStorageConfigurationSI extends BdbStorageConfiguration {
                                                                                               storeDef.getSecondaryIndexDefinitions(),
                                                                                               storeDef.getValueSerializer());
 
-        return new BdbStorageEngineSI(storeName, environment, db, cursorPreload, secIdxProcessor);
+        return new BdbStorageEngineSI(storeName, environment, db, runtimeConfig, secIdxProcessor);
     }
 
     @Override

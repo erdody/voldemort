@@ -29,9 +29,9 @@ import voldemort.versioning.Version;
 import voldemort.versioning.Versioned;
 
 /**
- * A {@link StoreClient} with lazy initialization. This is useful
- * existing codes that initializes clients at service deployment time,
- * when the servers may or may not be available
+ * A {@link StoreClient} with lazy initialization. This is useful existing codes
+ * that initializes clients at service deployment time, when the servers may or
+ * may not be available
  * 
  */
 public class LazyStoreClient<K, V> implements StoreClient<K, V> {
@@ -89,16 +89,16 @@ public class LazyStoreClient<K, V> implements StoreClient<K, V> {
         return getStoreClient().get(key, defaultValue);
     }
 
-    public void put(K key, V value) {
-        getStoreClient().put(key, value);
+    public Version put(K key, V value) {
+        return getStoreClient().put(key, value);
     }
 
-    public void put(K key, V value, Object transforms) {
-        getStoreClient().put(key, value, transforms);
+    public Version put(K key, V value, Object transforms) {
+        return getStoreClient().put(key, value, transforms);
     }
 
-    public void put(K key, Versioned<V> versioned) throws ObsoleteVersionException {
-        getStoreClient().put(key, versioned);
+    public Version put(K key, Versioned<V> versioned) throws ObsoleteVersionException {
+        return getStoreClient().put(key, versioned);
     }
 
     public boolean putIfNotObsolete(K key, Versioned<V> versioned) {

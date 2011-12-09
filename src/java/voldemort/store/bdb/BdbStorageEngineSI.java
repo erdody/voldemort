@@ -50,9 +50,9 @@ public class BdbStorageEngineSI extends BdbStorageEngine {
     public BdbStorageEngineSI(String name,
                               Environment environment,
                               Database database,
-                              boolean cursorPreload,
+                              BdbRuntimeConfig runtimeConfig,
                               SecondaryIndexProcessor secIdxProcessor) {
-        super(name, environment, database, cursorPreload);
+        super(name, environment, database, runtimeConfig);
         this.secIdxProcessor = secIdxProcessor;
 
         DatabaseConfig secConfig = new DatabaseConfig();
