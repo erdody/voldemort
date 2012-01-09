@@ -186,7 +186,7 @@ public class BdbStorageEngineSI extends BdbStorageEngine {
             array[offset] = (byte) ((v >>> 24) & 0xFF);
             array[offset + 1] = (byte) ((v >>> 16) & 0xFF);
             array[offset + 2] = (byte) ((v >>> 8) & 0xFF);
-            array[offset + 3] = (byte) ((v >>> 0) & 0xFF);
+            array[offset + 3] = (byte) (v & 0xFF);
         }
 
         private static int readInt(byte[] array, int offset) {
@@ -194,41 +194,19 @@ public class BdbStorageEngineSI extends BdbStorageEngine {
             int ch2 = array[offset + 1];
             int ch3 = array[offset + 2];
             int ch4 = array[offset + 3];
-            return ((ch1 << 24) + (ch2 << 16) + (ch3 << 8) + (ch4 << 0));
-        }
-
-        private static int compare(byte[] key1,
-                                   int offset1,
-                                   int a1Len,
-                                   byte[] key2,
-                                   int offset2,
-                                   int a2Len) {
-            int limit = Math.min(a1Len, a2Len);
-            for(int i = 0; i < limit; i++) {
-                byte b1 = key1[offset1 + i];
-                byte b2 = key2[offset2 + i];
-                if(b1 == b2) {
-                    continue;
-                } else {
-                    // Remember, bytes are signed, so convert to shorts so that
-                    // we effectively do an unsigned byte comparison.
-                    return (b1 & 0xff) - (b2 & 0xff);
-                }
-            }
-            return (a1Len - a2Len);
+            return ((ch1 << 24) + (ch2 << 16) + (ch3 << 8) + ch4);
         }
 
         /** Compares both secondary and primary key, to make it unique */
         public int compare(byte[] cKey1, byte[] cKey2) {
-            int result = compare(cKey1, 4, cKey1.length - 4, cKey2, 4, cKey2.length - 4);
-            return result;
+            return ByteArray.compare(cKey1, 4, cKey1.length - 4, cKey2, 4, cKey2.length - 4);
         }
 
         /** Compares secondary keys within the given composite keys */
         public static int compareSecondaryKeys(byte[] cKey1, byte[] cKey2) {
             int value1Size = readInt(cKey1, 0);
             int value2Size = readInt(cKey2, 0);
-            return compare(cKey1, 4, value1Size, cKey2, 4, value2Size);
+            return ByteArray.compare(cKey1, 4, value1Size, cKey2, 4, value2Size);
         }
 
         public static byte[] createCompositeKey(byte[] sk, byte[] pk) {
