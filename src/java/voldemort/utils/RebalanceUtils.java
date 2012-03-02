@@ -52,6 +52,7 @@ import voldemort.server.VoldemortConfig;
 import voldemort.server.rebalance.VoldemortRebalancingException;
 import voldemort.store.StoreDefinition;
 import voldemort.store.bdb.BdbStorageConfiguration;
+import voldemort.store.bdb.BdbStorageConfigurationSI;
 import voldemort.store.metadata.MetadataStore;
 import voldemort.store.metadata.MetadataStore.VoldemortState;
 import voldemort.store.readonly.ReadOnlyStorageConfiguration;
@@ -74,7 +75,8 @@ public class RebalanceUtils {
     private static Logger logger = Logger.getLogger(RebalanceUtils.class);
 
     public final static List<String> canRebalanceList = Arrays.asList(BdbStorageConfiguration.TYPE_NAME,
-                                                                      ReadOnlyStorageConfiguration.TYPE_NAME);
+                                                                      ReadOnlyStorageConfiguration.TYPE_NAME,
+                                                                      BdbStorageConfigurationSI.TYPE_NAME_SI);
 
     public final static String initialClusterFileName = "initial-cluster.xml";
     public final static String finalClusterFileName = "final-cluster.xml";
