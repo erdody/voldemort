@@ -21,6 +21,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import com.sleepycat.je.*;
 import org.apache.commons.codec.binary.Hex;
 import org.apache.log4j.Logger;
 
@@ -50,16 +51,6 @@ import voldemort.versioning.Version;
 import voldemort.versioning.Versioned;
 
 import com.google.common.collect.Lists;
-import com.sleepycat.je.Cursor;
-import com.sleepycat.je.Database;
-import com.sleepycat.je.DatabaseEntry;
-import com.sleepycat.je.DatabaseException;
-import com.sleepycat.je.DatabaseStats;
-import com.sleepycat.je.Environment;
-import com.sleepycat.je.LockMode;
-import com.sleepycat.je.OperationStatus;
-import com.sleepycat.je.StatsConfig;
-import com.sleepycat.je.Transaction;
 
 /**
  * A store that uses BDB for persistence
@@ -108,9 +99,13 @@ public class BdbStorageEngine implements StorageEngine<ByteArray, byte[], byte[]
         return name;
     }
 
+    private DiskOrderedCursorConfig getDiskOrderedCursorConfig() {
+        return new DiskOrderedCursorConfig();
+    }
+
     public ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> entries() {
         try {
-            Cursor cursor = getBdbDatabase().openCursor(null, null);
+            DiskOrderedCursor cursor = getBdbDatabase().openCursor(getDiskOrderedCursorConfig());
             return new BdbEntriesIterator(cursor);
         } catch(DatabaseException e) {
             logger.error("While retrieving entries", e);
@@ -120,7 +115,9 @@ public class BdbStorageEngine implements StorageEngine<ByteArray, byte[], byte[]
 
     public ClosableIterator<ByteArray> keys() {
         try {
-            Cursor cursor = getBdbDatabase().openCursor(null, null);
+            DiskOrderedCursorConfig config = getDiskOrderedCursorConfig();
+            config.setKeysOnly(true);
+            DiskOrderedCursor cursor = getBdbDatabase().openCursor(config);
             return new BdbKeysIterator(cursor);
         } catch(DatabaseException e) {
             logger.error("While retrieving keys", e);
@@ -492,7 +489,7 @@ public class BdbStorageEngine implements StorageEngine<ByteArray, byte[], byte[]
 
     protected static abstract class BdbIterator<T> implements ClosableIterator<T> {
 
-        final Cursor cursor;
+        final ForwardCursor cursor;
 
         private T current;
         private volatile boolean isClosed;
@@ -500,7 +497,7 @@ public class BdbStorageEngine implements StorageEngine<ByteArray, byte[], byte[]
         private DatabaseEntry valueEntry;
         private DatabaseEntry keyEntry;
 
-        public BdbIterator(Cursor cursor, boolean noValues) {
+        public BdbIterator(ForwardCursor cursor, boolean noValues) {
             this.cursor = cursor;
             this.isClosed = false;
             this.isInited = false;
@@ -513,9 +510,11 @@ public class BdbStorageEngine implements StorageEngine<ByteArray, byte[], byte[]
 
         protected abstract T get(DatabaseEntry key, DatabaseEntry value);
 
-        protected abstract OperationStatus moveCursor(DatabaseEntry key,
+        protected OperationStatus moveCursor(DatabaseEntry key,
                                                       DatabaseEntry value,
-                                                      boolean isFirst) throws DatabaseException;
+                                                      boolean isFirst) throws DatabaseException {
+            return cursor.getNext(key, value, LockMode.READ_UNCOMMITTED);
+        }
 
         public final boolean hasNext() {
             if(!isInited)
@@ -582,7 +581,7 @@ public class BdbStorageEngine implements StorageEngine<ByteArray, byte[], byte[]
 
     private static class BdbKeysIterator extends BdbIterator<ByteArray> {
 
-        public BdbKeysIterator(Cursor cursor) {
+        public BdbKeysIterator(ForwardCursor cursor) {
             super(cursor, true);
         }
 
@@ -591,17 +590,11 @@ public class BdbStorageEngine implements StorageEngine<ByteArray, byte[], byte[]
             return new ByteArray(key.getData());
         }
 
-        @Override
-        protected OperationStatus moveCursor(DatabaseEntry key, DatabaseEntry value, boolean isFirst)
-                throws DatabaseException {
-            return cursor.getNextNoDup(key, value, LockMode.READ_UNCOMMITTED);
-        }
-
     }
 
     private static class BdbEntriesIterator extends BdbIterator<Pair<ByteArray, Versioned<byte[]>>> {
 
-        public BdbEntriesIterator(Cursor cursor) {
+        public BdbEntriesIterator(DiskOrderedCursor cursor) {
             super(cursor, false);
         }
 
@@ -614,11 +607,6 @@ public class BdbStorageEngine implements StorageEngine<ByteArray, byte[], byte[]
             return Pair.create(new ByteArray(key.getData()), new Versioned<byte[]>(bytes, clock));
         }
 
-        @Override
-        protected OperationStatus moveCursor(DatabaseEntry key, DatabaseEntry value, boolean isFirst)
-                throws DatabaseException {
-            return cursor.getNext(key, value, LockMode.READ_UNCOMMITTED);
-        }
     }
 
     public boolean isPartitionAware() {

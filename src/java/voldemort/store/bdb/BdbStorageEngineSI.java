@@ -127,11 +127,14 @@ public class BdbStorageEngineSI extends BdbStorageEngine {
 
         private final byte[] from;
         private final byte[] to;
+        
+        private final Cursor keyOrderCursor;
 
         public BdbKeysRangeIterator(Cursor cursor, byte[] from, byte[] to) {
             super(cursor, false);
             this.from = CompositeKeyHandler.createCompositeKey(from, new byte[0]);
             this.to = CompositeKeyHandler.createCompositeKey(to, new byte[0]);
+            this.keyOrderCursor = cursor;
         }
 
         @Override
@@ -145,9 +148,9 @@ public class BdbStorageEngineSI extends BdbStorageEngine {
             OperationStatus opStatus;
             if(isFirst) {
                 key.setData(from);
-                opStatus = cursor.getSearchKeyRange(key, value, null);
+                opStatus = keyOrderCursor.getSearchKeyRange(key, value, null);
             } else {
-                opStatus = cursor.getNext(key, value, null);
+                opStatus = keyOrderCursor.getNext(key, value, null);
             }
 
             if(opStatus == OperationStatus.SUCCESS
