@@ -112,6 +112,14 @@ public class VectorClock implements Version, Serializable {
         this.timestamp = ByteUtils.readLong(bytes, index);
     }
 
+    /** Given a byte[] prefixed with a serialized vector clock, return the number of bytes used by the vector clock */
+    public static int getSize(byte[] bytes, int offset) {
+        int numEntries = ByteUtils.readShort(bytes, offset);
+        int versionSize = bytes[offset + 2];
+        int entrySize = ByteUtils.SIZE_OF_SHORT + versionSize;
+        return ByteUtils.SIZE_OF_SHORT + 1 + numEntries * entrySize + ByteUtils.SIZE_OF_LONG;
+    }
+
     public byte[] toBytes() {
         byte[] serialized = new byte[sizeInBytes()];
         // write the number of versions

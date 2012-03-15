@@ -161,6 +161,7 @@ public class BdbStorageEngineSI extends BdbStorageEngine {
         }
     }
 
+    /*
     @Override
     protected void putPostActions(Transaction transaction,
                                   ByteArray key,
@@ -182,6 +183,7 @@ public class BdbStorageEngineSI extends BdbStorageEngine {
 
         secIndexAdd(transaction, key, secIdxProcessor.extractSecondaryValues(value.getValue()));
     }
+    */
 
     public static class CompositeKeyHandler implements Comparator<byte[]> {
 
@@ -291,6 +293,7 @@ public class BdbStorageEngineSI extends BdbStorageEngine {
         return true;
     }
 
+    /*
     @Override
     protected void deletePostActions(Transaction transaction,
                                      ByteArray key,
@@ -308,6 +311,7 @@ public class BdbStorageEngineSI extends BdbStorageEngine {
                         secIdxProcessor.extractSecondaryValues(getVersionedValue(rawVal).getValue()));
         }
     }
+    */
 
     @Override
     public Object getCapability(StoreCapabilityType capability) {

@@ -21,6 +21,8 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
+import com.google.common.collect.Iterators;
+import org.junit.Test;
 import voldemort.TestUtils;
 import voldemort.secondary.SecondaryIndexTestUtils;
 import voldemort.serialization.StringSerializer;
@@ -28,10 +30,13 @@ import voldemort.store.serialized.SerializingStorageEngine;
 import voldemort.utils.ByteArray;
 import voldemort.utils.ClosableIterator;
 import voldemort.utils.Pair;
+import voldemort.versioning.VectorClock;
 import voldemort.versioning.Versioned;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Maps;
+
+import static voldemort.TestUtils.getClock;
 
 public abstract class AbstractStorageEngineTest extends AbstractByteArrayStoreTest {
 
@@ -155,6 +160,38 @@ public abstract class AbstractStorageEngineTest extends AbstractByteArrayStoreTe
             if(it != null) {
                 it.close();
             }
+        }
+    }
+
+    /**
+     * Check entries() work as expected with multiple versions
+     */
+    @Test
+    public void testEntries() throws Exception {
+        ByteArray key = getKey();
+        StorageEngine<ByteArray, byte[], byte[]> engine = getStorageEngine();
+
+        VectorClock c1 = getClock(1, 1);
+        VectorClock c2 = getClock(1, 2);
+        byte[] value = getValue();
+
+        assertEntries(0, engine.entries(), engine.keys());
+
+        // put two conflicting versions for the same key
+        engine.put(key, new Versioned<byte[]>(value, c1), null);
+        engine.put(key, new Versioned<byte[]>(value, c2), null);
+
+        assertEntries(2, engine.entries(), engine.keys());
+
+        engine.put(getKey(), new Versioned<byte[]>(value, c2), null);
+        assertEntries(3, engine.entries(), engine.keys());
+    }
+    
+    private void assertEntries(int expected, ClosableIterator... its) {
+        try {
+            for (ClosableIterator it : its) assertEquals(expected, Iterators.size(it));
+        } finally {
+            for (ClosableIterator it : its) it.close();
         }
     }
 

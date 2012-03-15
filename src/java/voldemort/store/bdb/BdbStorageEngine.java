@@ -16,21 +16,17 @@
 
 package voldemort.store.bdb;
 
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import com.sleepycat.je.*;
 import org.apache.commons.codec.binary.Hex;
+import org.apache.commons.lang.ArrayUtils;
 import org.apache.log4j.Logger;
 
 import voldemort.VoldemortException;
 import voldemort.annotations.jmx.JmxOperation;
 import voldemort.secondary.RangeQuery;
-import voldemort.serialization.IdentitySerializer;
-import voldemort.serialization.Serializer;
-import voldemort.serialization.VersionedSerializer;
 import voldemort.store.NoSuchCapabilityException;
 import voldemort.store.PersistenceFailureException;
 import voldemort.store.StorageEngine;
@@ -65,10 +61,8 @@ public class BdbStorageEngine implements StorageEngine<ByteArray, byte[], byte[]
     private final String name;
     protected Database bdbDatabase;
     protected final Environment environment;
-    private final VersionedSerializer<byte[]> versionedSerializer;
     private final AtomicBoolean isOpen;
     private final LockMode readLockMode;
-    private final Serializer<Version> versionSerializer;
     private final BdbEnvironmentStats bdbEnvironmentStats;
     private final AtomicBoolean isTruncating = new AtomicBoolean(false);
 
@@ -79,17 +73,6 @@ public class BdbStorageEngine implements StorageEngine<ByteArray, byte[], byte[]
         this.name = Utils.notNull(name);
         this.bdbDatabase = Utils.notNull(database);
         this.environment = Utils.notNull(environment);
-        this.versionedSerializer = new VersionedSerializer<byte[]>(new IdentitySerializer());
-        this.versionSerializer = new Serializer<Version>() {
-
-            public byte[] toBytes(Version object) {
-                return ((VectorClock) object).toBytes();
-            }
-
-            public Version toObject(byte[] bytes) {
-                return versionedSerializer.getVersion(bytes);
-            }
-        };
         this.isOpen = new AtomicBoolean(true);
         this.readLockMode = config.getLockMode();
         this.bdbEnvironmentStats = new BdbEnvironmentStats(environment, config.getStatsCacheTtlMs());
@@ -100,7 +83,9 @@ public class BdbStorageEngine implements StorageEngine<ByteArray, byte[], byte[]
     }
 
     private DiskOrderedCursorConfig getDiskOrderedCursorConfig() {
-        return new DiskOrderedCursorConfig();
+        final DiskOrderedCursorConfig cursorConfig = new DiskOrderedCursorConfig();
+//        cursorConfig.setMaxSeedMillisecs(10);
+        return cursorConfig;
     }
 
     public ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> entries() {
@@ -197,24 +182,24 @@ public class BdbStorageEngine implements StorageEngine<ByteArray, byte[], byte[]
     }
 
     public List<Version> getVersions(ByteArray key) {
-        return get(key, null, readLockMode, versionSerializer);
+        return get(key, null, readLockMode, VERSION_EXTRACTOR);
     }
-
+    
     public List<Versioned<byte[]>> get(ByteArray key, byte[] transforms)
             throws PersistenceFailureException {
-        return get(key, transforms, readLockMode, versionedSerializer);
+        return get(key, transforms, readLockMode, VERSIONED_EXTRACTOR);
     }
 
-    private <T> List<T> get(ByteArray key,
+    private <X> List<X> get(ByteArray key,
                             @SuppressWarnings("unused") byte[] transforms,
                             LockMode lockMode,
-                            Serializer<T> serializer) throws PersistenceFailureException {
+                            EntryValueExtractor<X> extractor) throws PersistenceFailureException {
         StoreUtils.assertValidKey(key);
 
         Cursor cursor = null;
         try {
             cursor = getBdbDatabase().openCursor(null, null);
-            return get(cursor, key, lockMode, serializer);
+            return get(cursor, key, lockMode, extractor);
         } catch(DatabaseException e) {
             logger.error("While getting", e);
             throw new PersistenceFailureException(e);
@@ -250,7 +235,7 @@ public class BdbStorageEngine implements StorageEngine<ByteArray, byte[], byte[]
         try {
             cursor = getBdbDatabase().openCursor(null, null);
             for(ByteArray key: keys) {
-                List<Versioned<byte[]>> values = get(cursor, key, readLockMode, versionedSerializer);
+                List<Versioned<byte[]>> values = get(cursor, key, readLockMode, VERSIONED_EXTRACTOR);
                 if(!values.isEmpty())
                     result.put(key, values);
             }
@@ -263,33 +248,57 @@ public class BdbStorageEngine implements StorageEngine<ByteArray, byte[], byte[]
         return result;
     }
 
-    private static <T> List<T> get(Cursor cursor,
+    private static interface EntryValueExtractor<X> {
+        
+       boolean processValues();
+        
+       X extract(DatabaseEntry keyEntry, DatabaseEntry valueEntry);
+    
+    }
+    
+    private static EntryValueExtractor<Versioned<byte[]>> VERSIONED_EXTRACTOR = new EntryValueExtractor<Versioned<byte[]>>() {
+
+        public boolean processValues() { return true; }
+
+        public Versioned<byte[]> extract(DatabaseEntry keyEntry, DatabaseEntry valueEntry) {
+            return VersionedKeyHandler.toObject(valueEntry.getData(), keyEntry.getData());
+        }
+    };
+
+    private static EntryValueExtractor<Version> VERSION_EXTRACTOR = new EntryValueExtractor<Version>() {
+
+        public boolean processValues() { return false; }
+
+        public Version extract(DatabaseEntry keyEntry, DatabaseEntry valueEntry) {
+            return VersionedKeyHandler.getVectorClock(keyEntry.getData());
+        }
+    };
+
+    private static <X> List<X> get(Cursor cursor,
                                    ByteArray key,
                                    LockMode lockMode,
-                                   Serializer<T> serializer) throws DatabaseException {
+                                   EntryValueExtractor<X> extractor) throws DatabaseException {
         StoreUtils.assertValidKey(key);
 
-        DatabaseEntry keyEntry = new DatabaseEntry(key.get());
-        DatabaseEntry valueEntry = new DatabaseEntry();
-        List<T> results = Lists.newArrayList();
+        DatabaseEntry keyEntry = new DatabaseEntry(VersionedKeyHandler.getInitialVersionedKey(key.get()));
+        DatabaseEntry valueEntry = extractor.processValues() ? new DatabaseEntry() : PARTIAL_ENTRY;
+        List<X> results = Lists.newArrayList();
+        
+        OperationStatus status = cursor.getSearchKeyRange(keyEntry, valueEntry, lockMode);
+        for(;
+            status == OperationStatus.SUCCESS && VersionedKeyHandler.matchesRawKey(keyEntry.getData(), key.get());
+            status = cursor.getNext(keyEntry, valueEntry, lockMode)) {
 
-        for(OperationStatus status = cursor.getSearchKey(keyEntry, valueEntry, lockMode); status == OperationStatus.SUCCESS; status = cursor.getNextDup(keyEntry,
-                                                                                                                                                        valueEntry,
-                                                                                                                                                        lockMode)) {
-            results.add(serializer.toObject(valueEntry.getData()));
+            results.add(extractor.extract(keyEntry, valueEntry));
         }
         return results;
-    }
-
-    protected Versioned<byte[]> getVersionedValue(byte[] rawValue) {
-        return versionedSerializer.toObject(rawValue);
     }
 
     public void put(ByteArray key, Versioned<byte[]> value, byte[] transforms)
             throws PersistenceFailureException {
         StoreUtils.assertValidKey(key);
-
-        DatabaseEntry keyEntry = new DatabaseEntry(key.get());
+        
+        DatabaseEntry keyEntry = new DatabaseEntry(VersionedKeyHandler.getInitialVersionedKey(key.get()));
         boolean succeeded = false;
         Transaction transaction = null;
         Cursor cursor = null;
@@ -302,13 +311,11 @@ public class BdbStorageEngine implements StorageEngine<ByteArray, byte[], byte[]
             DatabaseEntry valueEntry = new DatabaseEntry();
             cursor = getBdbDatabase().openCursor(transaction, null);
 
-            List<byte[]> deletedVals = Lists.newArrayList();
-            List<byte[]> remainingVals = Lists.newArrayList();
+            for(OperationStatus status = cursor.getSearchKeyRange(keyEntry, valueEntry, LockMode.RMW);
+                status == OperationStatus.SUCCESS && VersionedKeyHandler.matchesRawKey(keyEntry.getData(), key.get());
+                status = cursor.getNext(keyEntry, valueEntry, LockMode.RMW)) {
 
-            for(OperationStatus status = cursor.getSearchKey(keyEntry, valueEntry, LockMode.RMW); status == OperationStatus.SUCCESS; status = cursor.getNextDup(keyEntry,
-                                                                                                                                                                valueEntry,
-                                                                                                                                                                LockMode.RMW)) {
-                VectorClock clock = new VectorClock(valueEntry.getData());
+                VectorClock clock = new VectorClock(keyEntry.getData());
                 Occurred occured = value.getVersion().compare(clock);
                 if(occured == Occurred.BEFORE) {
                     throw new ObsoleteVersionException("Key "
@@ -319,21 +326,19 @@ public class BdbStorageEngine implements StorageEngine<ByteArray, byte[], byte[]
                                                        + clock + ".");
                 } else if(occured == Occurred.AFTER) {
                     // best effort delete of obsolete previous value!
-                    deletedVals.add(valueEntry.getData());
                     cursor.delete();
-                } else {
-                    remainingVals.add(valueEntry.getData());
                 }
             }
 
             // Okay so we cleaned up all the prior stuff, so now we are good to
             // insert the new thing
-            valueEntry = new DatabaseEntry(versionedSerializer.toBytes(value));
+            valueEntry = new DatabaseEntry(value.getValue());
+            Versioned<byte[]> vKey = Versioned.value(key.get(), value.getVersion());
+            keyEntry = new DatabaseEntry(VersionedKeyHandler.toBytes(vKey));
+
             OperationStatus status = cursor.put(keyEntry, valueEntry);
             if(status != OperationStatus.SUCCESS)
                 throw new PersistenceFailureException("Put operation failed with status: " + status);
-
-            putPostActions(transaction, key, deletedVals, remainingVals, value, transforms);
 
             succeeded = true;
         } catch(DatabaseException e) {
@@ -348,12 +353,11 @@ public class BdbStorageEngine implements StorageEngine<ByteArray, byte[], byte[]
         }
     }
 
-    protected void putPostActions(Transaction transaction,
-                                  ByteArray key,
-                                  List<byte[]> deletedVals,
-                                  List<byte[]> remainingVals,
-                                  Versioned<byte[]> value,
-                                  byte[] transforms) {}
+    private final static DatabaseEntry PARTIAL_ENTRY;
+    static {
+        PARTIAL_ENTRY = new DatabaseEntry(ArrayUtils.EMPTY_BYTE_ARRAY);
+        PARTIAL_ENTRY.setPartial(0, 0, true);
+    }
 
     public boolean delete(ByteArray key, Version version) throws PersistenceFailureException {
         StoreUtils.assertValidKey(key);
@@ -361,27 +365,23 @@ public class BdbStorageEngine implements StorageEngine<ByteArray, byte[], byte[]
         Transaction transaction = null;
         try {
             transaction = this.environment.beginTransaction(null, null);
-            DatabaseEntry keyEntry = new DatabaseEntry(key.get());
-            DatabaseEntry valueEntry = new DatabaseEntry();
+            DatabaseEntry keyEntry = new DatabaseEntry(VersionedKeyHandler.getInitialVersionedKey(key.get()));
             cursor = getBdbDatabase().openCursor(transaction, null);
-            OperationStatus status = cursor.getSearchKey(keyEntry,
-                                                         valueEntry,
-                                                         LockMode.READ_UNCOMMITTED);
+            
+            boolean deleted = false;
 
-            List<byte[]> deletedVals = Lists.newArrayList();
-            List<byte[]> remainingVals = Lists.newArrayList();
-            while(status == OperationStatus.SUCCESS) {
+            for(OperationStatus status = cursor.getSearchKeyRange(keyEntry, PARTIAL_ENTRY, LockMode.READ_UNCOMMITTED);
+                status == OperationStatus.SUCCESS && VersionedKeyHandler.matchesRawKey(keyEntry.getData(), key.get());
+                status = cursor.getNext(keyEntry, PARTIAL_ENTRY, LockMode.READ_UNCOMMITTED)) {
+
                 // if version is null no comparison is necessary
-                if(new VectorClock(valueEntry.getData()).compare(version) == Occurred.BEFORE) {
+                if(new VectorClock(keyEntry.getData()).compare(version) == Occurred.BEFORE) {
                     cursor.delete();
-                    deletedVals.add(valueEntry.getData());
-                } else {
-                    remainingVals.add(valueEntry.getData());
+                    deleted = true;
                 }
-                status = cursor.getNextDup(keyEntry, valueEntry, LockMode.READ_UNCOMMITTED);
             }
-            deletePostActions(transaction, key, deletedVals, remainingVals);
-            return !deletedVals.isEmpty();
+
+            return deleted;
         } catch(DatabaseException e) {
             logger.error("While deleting", e);
             throw new PersistenceFailureException(e);
@@ -393,11 +393,6 @@ public class BdbStorageEngine implements StorageEngine<ByteArray, byte[], byte[]
             }
         }
     }
-
-    protected void deletePostActions(Transaction transaction,
-                                     ByteArray key,
-                                     List<byte[]> deletedVals,
-                                     List<byte[]> remainingVals) {}
 
     public Object getCapability(StoreCapabilityType capability) {
         throw new NoSuchCapabilityException(capability, getName());
@@ -492,10 +487,12 @@ public class BdbStorageEngine implements StorageEngine<ByteArray, byte[], byte[]
         final ForwardCursor cursor;
 
         private T current;
+
         private volatile boolean isClosed;
         private volatile boolean isInited;
         private DatabaseEntry valueEntry;
         private DatabaseEntry keyEntry;
+
 
         public BdbIterator(ForwardCursor cursor, boolean noValues) {
             this.cursor = cursor;
@@ -526,11 +523,12 @@ public class BdbStorageEngine implements StorageEngine<ByteArray, byte[], byte[]
             if(!isInited) {
                 try {
                     OperationStatus opStatus = moveCursor(keyEntry, valueEntry, true);
-                    if(opStatus == OperationStatus.SUCCESS)
+                    if(opStatus == OperationStatus.SUCCESS) {
                         current = get(keyEntry, valueEntry);
+                    }
                     isInited = true;
                 } catch(DatabaseException e) {
-                    logger.error("While initializaing cursor", e);
+                    logger.error("While initializing cursor", e);
                     throw new PersistenceFailureException(e);
                 }
             }
@@ -542,13 +540,14 @@ public class BdbStorageEngine implements StorageEngine<ByteArray, byte[], byte[]
             if(isClosed)
                 throw new PersistenceFailureException("Call to next() on a closed iterator.");
 
+            T previous = current;
             try {
                 OperationStatus opStatus = moveCursor(keyEntry, valueEntry, false);
-                T previous = current;
-                if(opStatus != OperationStatus.SUCCESS)
-                    current = null;
-                else
+                if (opStatus == OperationStatus.SUCCESS) {
                     current = get(keyEntry, valueEntry);
+                } else {
+                    current = null;
+                }
 
                 return previous;
             } catch(DatabaseException e) {
@@ -587,24 +586,24 @@ public class BdbStorageEngine implements StorageEngine<ByteArray, byte[], byte[]
 
         @Override
         protected ByteArray get(DatabaseEntry key, DatabaseEntry value) {
-            return new ByteArray(key.getData());
+            int versionSize = VectorClock.getSize(key.getData(), 0);
+            byte[] keyBytes = ByteUtils.copy(key.getData(), versionSize, key.getData().length);
+            return new ByteArray(keyBytes);
         }
 
     }
 
     private static class BdbEntriesIterator extends BdbIterator<Pair<ByteArray, Versioned<byte[]>>> {
 
-        public BdbEntriesIterator(DiskOrderedCursor cursor) {
+        public BdbEntriesIterator(ForwardCursor cursor) {
             super(cursor, false);
         }
 
         @Override
         protected Pair<ByteArray, Versioned<byte[]>> get(DatabaseEntry key, DatabaseEntry value) {
-            VectorClock clock = new VectorClock(value.getData());
-            byte[] bytes = ByteUtils.copy(value.getData(),
-                                          clock.sizeInBytes(),
-                                          value.getData().length);
-            return Pair.create(new ByteArray(key.getData()), new Versioned<byte[]>(bytes, clock));
+            VectorClock clock = new VectorClock(key.getData());
+            byte[] keyBytes = ByteUtils.copy(key.getData(), clock.sizeInBytes(), key.getData().length);
+            return Pair.create(new ByteArray(keyBytes), new Versioned<byte[]>(value.getData(), clock));
         }
 
     }
@@ -616,4 +615,57 @@ public class BdbStorageEngine implements StorageEngine<ByteArray, byte[], byte[]
     public Set<ByteArray> getAllKeys(RangeQuery query) {
         throw new UnsupportedOperationException("No secondary index support.");
     }
+
+    public static class VersionedKeyHandler implements Comparator<byte[]> {
+
+        /** Compares both secondary and primary key, to make it unique */
+        public int compare(byte[] vKey1, byte[] vKey2) {
+            int vSize1 = VectorClock.getSize(vKey1, 0);
+            int vSize2 = VectorClock.getSize(vKey2, 0);
+            int result = ByteArray.compare(vKey1, vSize1, vKey1.length - vSize1, vKey2, vSize2, vKey2.length - vSize1);
+            return result != 0 ? result : ByteArray.compare(vKey1, 0, vSize1, vKey2, 0, vSize2);
+        }
+
+        public static boolean matchesRawKey(byte[] vKey, byte[] key) {
+            int vSize = VectorClock.getSize(vKey, 0);
+            return (vKey.length - vSize == key.length) && ByteArray.compare(vKey, vSize, key.length, key, 0, key.length) == 0;
+        }
+
+        public static boolean matchesVersionedKey(byte[] vKey1, byte[] vKey2) {
+            int vSize1 = VectorClock.getSize(vKey1, 0);
+            int vSize2 = VectorClock.getSize(vKey2, 0);
+            int vKey1Size = vKey1.length - vSize1;
+            int vKey2Size = vKey2.length - vSize2;
+            return (vKey1Size == vKey2Size) && ByteArray.compare(vKey1, vSize1, vKey1Size, vKey2, vSize2, vKey2Size) == 0;
+        }
+
+        /** Add an empty version to the key to be able to do a range search */
+        public static byte[] getInitialVersionedKey(byte[] key) {
+            byte[] result = new byte[key.length + 11];
+            System.arraycopy(key, 0, result, 11, key.length);
+            return result;
+        }
+
+        public static byte[] toBytes(Versioned<byte[]> versioned) {
+            byte[] versionBytes = null;
+            if(versioned.getVersion() == null)
+                versionBytes = new byte[] { -1 };
+            else
+                versionBytes = ((VectorClock) versioned.getVersion()).toBytes();
+            byte[] objectBytes = versioned.getValue();
+            return ByteUtils.cat(versionBytes, objectBytes);
+        }
+
+        public static Versioned<byte[]> toObject(byte[] bytes, byte[] version) {
+            return new Versioned<byte[]>(bytes, getVectorClock(version));
+        }
+
+        private static VectorClock getVectorClock(byte[] bytes) {
+            if(bytes[0] >= 0)
+                return new VectorClock(bytes);
+            return null;
+        }
+
+    }
+
 }

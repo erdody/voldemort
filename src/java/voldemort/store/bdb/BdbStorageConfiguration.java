@@ -19,6 +19,7 @@ package voldemort.store.bdb;
 import java.io.File;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.util.logging.Level;
 
 import org.apache.log4j.Logger;
 
@@ -100,12 +101,19 @@ public class BdbStorageConfiguration implements StorageConfiguration {
         environmentConfig.setConfigParam(EnvironmentConfig.CLEANER_MAX_BATCH_FILES,
                                          Integer.toString(config.getBdbCleanerMaxBatchFiles()));
 
+//        environmentConfig.setConfigParam(EnvironmentConfig.CONSOLE_LOGGING_LEVEL, "FINEST");
+//        java.util.logging.Logger.getLogger("").setLevel(Level.FINEST);
+
         environmentConfig.setLockTimeout(config.getBdbLockTimeoutMs(), TimeUnit.MILLISECONDS);
         databaseConfig = new DatabaseConfig();
         databaseConfig.setAllowCreate(true);
         databaseConfig.setSortedDuplicates(config.isBdbSortedDuplicatesEnabled());
         databaseConfig.setNodeMaxEntries(config.getBdbBtreeFanout());
         databaseConfig.setTransactional(true);
+        if (config.isBdbSortedDuplicatesEnabled()) {
+            databaseConfig.setBtreeComparator(BdbStorageEngine.VersionedKeyHandler.class);
+        }
+        
         bdbMasterDir = config.getBdbDataDirectory();
         useOneEnvPerStore = config.isBdbOneEnvPerStore();
         if(useOneEnvPerStore)

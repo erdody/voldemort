@@ -70,7 +70,8 @@ public class BdbStorageEngineTest extends AbstractStorageEngineTest {
         this.databaseConfig = new DatabaseConfig();
         databaseConfig.setAllowCreate(true);
         databaseConfig.setTransactional(true);
-        databaseConfig.setSortedDuplicates(true);
+        databaseConfig.setSortedDuplicates(false);
+        databaseConfig.setBtreeComparator(BdbStorageEngine.VersionedKeyHandler.class);
         this.database = environment.openDatabase(null, "test", databaseConfig);
         this.runtimeConfig = new BdbRuntimeConfig();
         runtimeConfig.setLockMode(LOCK_MODE);
