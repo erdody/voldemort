@@ -195,7 +195,7 @@ public class BdbStorageEngine implements StorageEngine<ByteArray, byte[], byte[]
                             LockMode lockMode,
                             EntryValueExtractor<X> extractor) throws PersistenceFailureException {
         StoreUtils.assertValidKey(key);
-
+        
         Cursor cursor = null;
         try {
             cursor = getBdbDatabase().openCursor(null, null);
@@ -284,8 +284,7 @@ public class BdbStorageEngine implements StorageEngine<ByteArray, byte[], byte[]
         DatabaseEntry valueEntry = extractor.processValues() ? new DatabaseEntry() : PARTIAL_ENTRY;
         List<X> results = Lists.newArrayList();
         
-        OperationStatus status = cursor.getSearchKeyRange(keyEntry, valueEntry, lockMode);
-        for(;
+        for(OperationStatus status = cursor.getSearchKeyRange(keyEntry, valueEntry, lockMode);
             status == OperationStatus.SUCCESS && VersionedKeyHandler.matchesRawKey(keyEntry.getData(), key.get());
             status = cursor.getNext(keyEntry, valueEntry, lockMode)) {
 
@@ -622,7 +621,7 @@ public class BdbStorageEngine implements StorageEngine<ByteArray, byte[], byte[]
         public int compare(byte[] vKey1, byte[] vKey2) {
             int vSize1 = VectorClock.getSize(vKey1, 0);
             int vSize2 = VectorClock.getSize(vKey2, 0);
-            int result = ByteArray.compare(vKey1, vSize1, vKey1.length - vSize1, vKey2, vSize2, vKey2.length - vSize1);
+            int result = ByteArray.compare(vKey1, vSize1, vKey1.length - vSize1, vKey2, vSize2, vKey2.length - vSize2);
             return result != 0 ? result : ByteArray.compare(vKey1, 0, vSize1, vKey2, 0, vSize2);
         }
 

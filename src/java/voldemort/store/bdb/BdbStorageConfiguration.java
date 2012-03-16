@@ -110,7 +110,7 @@ public class BdbStorageConfiguration implements StorageConfiguration {
         databaseConfig.setSortedDuplicates(config.isBdbSortedDuplicatesEnabled());
         databaseConfig.setNodeMaxEntries(config.getBdbBtreeFanout());
         databaseConfig.setTransactional(true);
-        if (config.isBdbSortedDuplicatesEnabled()) {
+        if (!config.isBdbSortedDuplicatesEnabled()) {
             databaseConfig.setBtreeComparator(BdbStorageEngine.VersionedKeyHandler.class);
         }
         
