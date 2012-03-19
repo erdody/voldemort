@@ -307,23 +307,22 @@ public class BdbStorageEngine implements StorageEngine<ByteArray, byte[], byte[]
             // Check existing values
             // if there is a version obsoleted by this value delete it
             // if there is a version later than this one, throw an exception
-            DatabaseEntry valueEntry = new DatabaseEntry();
             cursor = getBdbDatabase().openCursor(transaction, null);
 
-            for(OperationStatus status = cursor.getSearchKeyRange(keyEntry, valueEntry, LockMode.RMW);
+            for(OperationStatus status = cursor.getSearchKeyRange(keyEntry, PARTIAL_ENTRY, LockMode.RMW);
                 status == OperationStatus.SUCCESS && VersionedKeyHandler.matchesRawKey(keyEntry.getData(), key.get());
-                status = cursor.getNext(keyEntry, valueEntry, LockMode.RMW)) {
+                status = cursor.getNext(keyEntry, PARTIAL_ENTRY, LockMode.RMW)) {
 
                 VectorClock clock = new VectorClock(keyEntry.getData());
-                Occurred occured = value.getVersion().compare(clock);
-                if(occured == Occurred.BEFORE) {
+                Occurred occurred = value.getVersion().compare(clock);
+                if(occurred == Occurred.BEFORE) {
                     throw new ObsoleteVersionException("Key "
                                                        + new String(hexCodec.encode(key.get()))
                                                        + " "
                                                        + value.getVersion().toString()
                                                        + " is obsolete, it is no greater than the current version of "
                                                        + clock + ".");
-                } else if(occured == Occurred.AFTER) {
+                } else if(occurred == Occurred.AFTER) {
                     // best effort delete of obsolete previous value!
                     cursor.delete();
                 }
@@ -331,7 +330,7 @@ public class BdbStorageEngine implements StorageEngine<ByteArray, byte[], byte[]
 
             // Okay so we cleaned up all the prior stuff, so now we are good to
             // insert the new thing
-            valueEntry = new DatabaseEntry(value.getValue());
+            DatabaseEntry valueEntry = new DatabaseEntry(value.getValue());
             Versioned<byte[]> vKey = Versioned.value(key.get(), value.getVersion());
             keyEntry = new DatabaseEntry(VersionedKeyHandler.toBytes(vKey));
 
