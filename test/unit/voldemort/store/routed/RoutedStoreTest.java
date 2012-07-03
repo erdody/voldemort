@@ -108,7 +108,6 @@ public class RoutedStoreTest extends AbstractByteArrayStoreTest {
     private final boolean isPipelineRoutedStoreEnabled;
     private FailureDetector failureDetector;
     private ExecutorService routedStoreThreadPool;
-    private SecondaryIndexTestUtils secIdxUtils;
     private Store<ByteArray, byte[], byte[]> store;
 
     public RoutedStoreTest(Class<FailureDetector> failureDetectorClass,
@@ -119,7 +118,6 @@ public class RoutedStoreTest extends AbstractByteArrayStoreTest {
         List<byte[]> values = getValues(2);
         aValue = values.get(0);
         anotherValue = values.get(1);
-        secIdxUtils = new SecondaryIndexTestUtils(this);
     }
 
     @Override
@@ -223,9 +221,10 @@ public class RoutedStoreTest extends AbstractByteArrayStoreTest {
             else if(count < failing + sleepy)
                 subStore = new SleepyStore<ByteArray, byte[], byte[]>(Long.MAX_VALUE,
                                                                       new InMemoryStorageEngineSI("test",
-                                                                                                  secIdxUtils.getSecIdxProcessor()));
+                                                                                                  SecondaryIndexTestUtils.getSecIdxProcessor()));
             else
-                subStore = new InMemoryStorageEngineSI("test", secIdxUtils.getSecIdxProcessor());
+                subStore = new InMemoryStorageEngineSI("test",
+                                                       SecondaryIndexTestUtils.getSecIdxProcessor());
 
             subStores.put(n.getId(), subStore);
 
@@ -345,8 +344,6 @@ public class RoutedStoreTest extends AbstractByteArrayStoreTest {
         assertTrue(routedStore.delete(aKey, versioned.getVersion()));
         assertNEqual(routedStore, 0, aKey, versioned);
         assertTrue(!routedStore.delete(aKey, versioned.getVersion()));
-
-        secIdxUtils.testSecondaryIndex();
     }
 
     @Test
@@ -1345,38 +1342,6 @@ public class RoutedStoreTest extends AbstractByteArrayStoreTest {
                                                                                  .setNodes(cluster.getNodes())
                                                                                  .setStoreVerifier(create(subStores));
         failureDetector = create(failureDetectorConfig, false);
-    }
-
-    @Test
-    public void testSecondaryIndexWithFailure() throws Exception {
-        // N=3 R=2 W=2 and 1 failing node, everything should run
-        store = getStore(cluster,
-                         2,
-                         2,
-                         3,
-                         3,
-                         1,
-                         0,
-                         RoutingStrategyType.CONSISTENT_STRATEGY,
-                         UnreachableStoreException.class);
-        testSecondaryIndex();
-
-        // N=3 R=2 W=2 and 2 failing nodes, we shouldn't be able to run
-        store = getStore(cluster,
-                         2,
-                         2,
-                         3,
-                         3,
-                         2,
-                         0,
-                         RoutingStrategyType.CONSISTENT_STRATEGY,
-                         UnreachableStoreException.class);
-        try {
-            testSecondaryIndex();
-            fail();
-        } catch(InsufficientOperationalNodesException ex) {
-
-        }
     }
 
 }

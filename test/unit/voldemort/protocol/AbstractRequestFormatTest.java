@@ -7,7 +7,6 @@ import java.io.DataOutputStream;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 import junit.framework.TestCase;
 import voldemort.ServerTestUtils;
@@ -16,23 +15,17 @@ import voldemort.VoldemortException;
 import voldemort.client.protocol.RequestFormat;
 import voldemort.client.protocol.RequestFormatFactory;
 import voldemort.client.protocol.RequestFormatType;
-import voldemort.secondary.RangeQuery;
-import voldemort.secondary.SecondaryIndexTestUtils;
-import voldemort.secondary.SecondaryIndexTestUtils.ByteArrayStoreProvider;
 import voldemort.server.RequestRoutingType;
 import voldemort.server.StoreRepository;
 import voldemort.server.protocol.RequestHandler;
-import voldemort.store.DelegatingStore;
 import voldemort.store.StorageEngine;
-import voldemort.store.Store;
 import voldemort.store.memory.InMemoryStorageEngine;
-import voldemort.store.memory.InMemoryStorageEngineSI;
 import voldemort.utils.ByteArray;
 import voldemort.versioning.ObsoleteVersionException;
 import voldemort.versioning.VectorClock;
 import voldemort.versioning.Versioned;
 
-public abstract class AbstractRequestFormatTest extends TestCase implements ByteArrayStoreProvider {
+public abstract class AbstractRequestFormatTest extends TestCase {
 
     private final RequestFormatType type;
     private final String storeName;
@@ -278,37 +271,6 @@ public abstract class AbstractRequestFormatTest extends TestCase implements Byte
         } finally {
             this.store.truncate();
         }
-    }
-
-    public Store<ByteArray, byte[], byte[]> getStore() {
-        // We could implement other API methods as well, and leverage
-        // AbstractByteArrayStoreTest but I didn't want to
-        // change existing test implementation
-        return new DelegatingStore<ByteArray, byte[], byte[]>(store) {
-
-            @Override
-            public Set<ByteArray> getAllKeys(RangeQuery query) {
-                try {
-                    ByteArrayOutputStream getAllKeysRequest = new ByteArrayOutputStream();
-                    clientWireFormat.writeGetAllKeysRequest(new DataOutputStream(getAllKeysRequest),
-                                                             storeName,
-                                                             query,
-                                                             RequestRoutingType.NORMAL);
-                    ByteArrayOutputStream getAllKeysResponse = new ByteArrayOutputStream();
-                    serverWireFormat.handleRequest(inputStream(getAllKeysRequest),
-                                                   new DataOutputStream(getAllKeysResponse));
-                    return clientWireFormat.readGetAllKeysResponse(inputStream(getAllKeysResponse));
-                } catch(Exception ex) {
-                    throw new RuntimeException(ex);
-                }
-            }
-        };
-    }
-
-    public void testGetAllKeysRequests() throws Exception {
-        SecondaryIndexTestUtils secIdxUtils = new SecondaryIndexTestUtils(this);
-        setUpStore(new InMemoryStorageEngineSI(storeName, secIdxUtils.getSecIdxProcessor()));
-        secIdxUtils.testSecondaryIndex();
     }
 
     public DataInputStream inputStream(ByteArrayOutputStream output) {

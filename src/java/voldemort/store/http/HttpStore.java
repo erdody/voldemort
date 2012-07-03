@@ -23,7 +23,6 @@ import java.io.IOException;
 import java.net.HttpURLConnection;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 import org.apache.commons.httpclient.HttpClient;
 import org.apache.commons.httpclient.HttpException;
@@ -32,7 +31,6 @@ import org.apache.commons.httpclient.methods.PostMethod;
 
 import voldemort.VoldemortException;
 import voldemort.client.protocol.RequestFormat;
-import voldemort.secondary.RangeQuery;
 import voldemort.server.RequestRoutingType;
 import voldemort.store.NoSuchCapabilityException;
 import voldemort.store.Store;
@@ -209,10 +207,6 @@ public class HttpStore implements Store<ByteArray, byte[], byte[]> {
             if(method != null)
                 method.releaseConnection();
         }
-    }
-
-    public Set<ByteArray> getAllKeys(RangeQuery query) {
-        throw new UnsupportedOperationException("No secondary index support.");
     }
 
 }

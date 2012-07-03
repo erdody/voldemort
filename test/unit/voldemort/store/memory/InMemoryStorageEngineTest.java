@@ -24,7 +24,6 @@ public class InMemoryStorageEngineTest extends AbstractStorageEngineTest {
 
     private StorageEngine<ByteArray, byte[], byte[]> store;
 
-    @Override
     public StorageEngine<ByteArray, byte[], byte[]> getStorageEngine() {
         return store;
     }

@@ -18,10 +18,8 @@ package voldemort.store;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 import voldemort.VoldemortException;
-import voldemort.secondary.RangeQuery;
 import voldemort.utils.Utils;
 import voldemort.versioning.Version;
 import voldemort.versioning.Versioned;
@@ -72,10 +70,6 @@ public class DoNothingStore<K, V, T> implements Store<K, V, T> {
 
     public List<Version> getVersions(K key) {
         // Do nothing
-        return null;
-    }
-
-    public Set<K> getAllKeys(RangeQuery query) {
         return null;
     }
 

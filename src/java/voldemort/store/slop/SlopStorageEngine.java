@@ -18,12 +18,10 @@ package voldemort.store.slop;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 import voldemort.VoldemortException;
 import voldemort.annotations.jmx.JmxGetter;
 import voldemort.cluster.Cluster;
-import voldemort.secondary.RangeQuery;
 import voldemort.serialization.ByteArraySerializer;
 import voldemort.serialization.IdentitySerializer;
 import voldemort.serialization.SlopSerializer;
@@ -105,10 +103,6 @@ public class SlopStorageEngine implements StorageEngine<ByteArray, byte[], byte[
         return slopEngine.getAll(keys, transforms);
     }
 
-    public Set<ByteArray> getAllKeys(RangeQuery query) {
-        return slopEngine.getAllKeys(query);
-    }
-
     public void put(ByteArray key, Versioned<byte[]> value, byte[] transforms)
             throws VoldemortException {
         slopEngine.put(key, value, transforms);
@@ -137,4 +131,9 @@ public class SlopStorageEngine implements StorageEngine<ByteArray, byte[], byte[
     public boolean isPartitionAware() {
         return slopEngine.isPartitionAware();
     }
+
+    public ClosableIterator<KeyMatch<ByteArray>> keys(String query) {
+        return slopEngine.keys(query);
+    }
+
 }

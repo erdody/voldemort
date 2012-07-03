@@ -18,10 +18,8 @@ package voldemort.store;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 import voldemort.VoldemortException;
-import voldemort.secondary.RangeQuery;
 import voldemort.utils.Utils;
 import voldemort.versioning.Version;
 import voldemort.versioning.Versioned;
@@ -55,10 +53,6 @@ public class DelegatingStore<K, V, T> implements Store<K, V, T> {
             throws VoldemortException {
         StoreUtils.assertValidKeys(keys);
         return innerStore.getAll(keys, transforms);
-    }
-
-    public Set<K> getAllKeys(RangeQuery query) {
-        return innerStore.getAllKeys(query);
     }
 
     public List<Versioned<V>> get(K key, T transform) throws VoldemortException {

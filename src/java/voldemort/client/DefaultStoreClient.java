@@ -19,7 +19,6 @@ package voldemort.client;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
-import java.util.Set;
 
 import org.apache.log4j.Logger;
 
@@ -29,7 +28,6 @@ import voldemort.annotations.jmx.JmxManaged;
 import voldemort.annotations.jmx.JmxOperation;
 import voldemort.cluster.Node;
 import voldemort.routing.RoutingStrategy;
-import voldemort.secondary.RangeQuery;
 import voldemort.serialization.Serializer;
 import voldemort.store.InvalidMetadataException;
 import voldemort.store.Store;
@@ -356,19 +354,6 @@ public class DefaultStoreClient<K, V> implements StoreClient<K, V> {
         }
         return put(key, versioned, transforms);
 
-    }
-
-    public Set<K> getAllKeys(RangeQuery query) {
-        for(int attempts = 0;; attempts++) {
-            if(attempts >= this.metadataRefreshAttempts)
-                throw new VoldemortException(this.metadataRefreshAttempts
-                                             + " metadata refresh attempts failed.");
-            try {
-                return store.getAllKeys(query);
-            } catch(InvalidMetadataException e) {
-                bootStrap();
-            }
-        }
     }
 
 }

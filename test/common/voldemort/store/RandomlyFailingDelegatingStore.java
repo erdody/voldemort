@@ -16,52 +16,42 @@ public class RandomlyFailingDelegatingStore<K, V, T> extends DelegatingStore<K, 
         this.innerStorageEngine = innerStorageEngine;
     }
 
+    static class FailingIterator<T> implements ClosableIterator<T> {
+
+        private final ClosableIterator<T> iterator;
+
+        FailingIterator(ClosableIterator<T> iterator) {
+            this.iterator = iterator;
+        }
+
+        public void close() {
+            iterator.close();
+        }
+
+        public boolean hasNext() {
+            return iterator.hasNext();
+        }
+
+        public T next() {
+            if(Math.random() > FAIL_PROBABILITY)
+                return iterator.next();
+
+            throw new VoldemortException("Failing now !!");
+        }
+
+        public void remove() {}
+    }
+
     public ClosableIterator<Pair<K, Versioned<V>>> entries() {
-        return new ClosableIterator<Pair<K, Versioned<V>>>() {
-
-            ClosableIterator<Pair<K, Versioned<V>>> iterator = innerStorageEngine.entries();
-
-            public void close() {
-                iterator.close();
-            }
-
-            public boolean hasNext() {
-                return iterator.hasNext();
-            }
-
-            public Pair<K, Versioned<V>> next() {
-                if(Math.random() > FAIL_PROBABILITY)
-                    return iterator.next();
-
-                throw new VoldemortException("Failing now !!");
-            }
-
-            public void remove() {}
-        };
+        return new FailingIterator<Pair<K, Versioned<V>>>(innerStorageEngine.entries());
     }
 
     public ClosableIterator<K> keys() {
-        return new ClosableIterator<K>() {
+        return new FailingIterator<K>(innerStorageEngine.keys());
+    }
 
-            ClosableIterator<K> iterator = innerStorageEngine.keys();
-
-            public void close() {
-                iterator.close();
-            }
-
-            public boolean hasNext() {
-                return iterator.hasNext();
-            }
-
-            public K next() {
-                if(Math.random() > FAIL_PROBABILITY)
-                    return iterator.next();
-
-                throw new VoldemortException("Failing now !!");
-            }
-
-            public void remove() {}
-        };
+    public ClosableIterator<KeyMatch<K>> keys(String query) {
+        return new FailingIterator<KeyMatch<K>>(innerStorageEngine.keys(query));
     }
 
     public void truncate() {

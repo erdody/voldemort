@@ -17,18 +17,15 @@
 package voldemort.store.memory;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
 import voldemort.VoldemortException;
 import voldemort.annotations.concurrency.NotThreadsafe;
-import voldemort.secondary.RangeQuery;
 import voldemort.store.NoSuchCapabilityException;
 import voldemort.store.StorageEngine;
 import voldemort.store.StoreCapabilityType;
@@ -49,7 +46,7 @@ import com.google.common.collect.Lists;
  */
 public class InMemoryStorageEngine<K, V, T> implements StorageEngine<K, V, T> {
 
-    private final ConcurrentMap<K, List<Versioned<V>>> map;
+    protected final ConcurrentMap<K, List<Versioned<V>>> map;
     private final String name;
 
     public InMemoryStorageEngine(String name) {
@@ -98,8 +95,6 @@ public class InMemoryStorageEngine<K, V, T> implements StorageEngine<K, V, T> {
                     return false;
             }
 
-            deletePostActions(key, deletedVals, remainingVals);
-
             return !deletedVals.isEmpty();
         }
     }
@@ -137,12 +132,6 @@ public class InMemoryStorageEngine<K, V, T> implements StorageEngine<K, V, T> {
                 items = new ArrayList<Versioned<V>>();
                 items.add(new Versioned<V>(value.getValue(), version));
                 success = map.putIfAbsent(key, items) == null;
-                if(success)
-                    putPostActions(key,
-                                   Collections.<Versioned<V>> emptyList(),
-                                   Collections.<Versioned<V>> emptyList(),
-                                   value,
-                                   transforms);
             } else {
                 synchronized(items) {
                     // if this check fails, items has been removed from the map
@@ -167,22 +156,11 @@ public class InMemoryStorageEngine<K, V, T> implements StorageEngine<K, V, T> {
                     }
                     items.removeAll(itemsToRemove);
                     items.add(value);
-                    putPostActions(key, itemsToRemove, itemsRemaining, value, transforms);
                 }
                 success = true;
             }
         }
     }
-
-    protected void putPostActions(K key,
-                                  List<Versioned<V>> deletedVals,
-                                  List<Versioned<V>> remainingVals,
-                                  Versioned<V> value,
-                                  T transforms) {}
-
-    protected void deletePostActions(K key,
-                                     List<Versioned<V>> deletedVals,
-                                     List<Versioned<V>> remainingVals) {}
 
     public Object getCapability(StoreCapabilityType capability) {
         throw new NoSuchCapabilityException(capability, getName());
@@ -292,7 +270,7 @@ public class InMemoryStorageEngine<K, V, T> implements StorageEngine<K, V, T> {
         return false;
     }
 
-    public Set<K> getAllKeys(RangeQuery query) {
+    public ClosableIterator<KeyMatch<K>> keys(String query) {
         throw new UnsupportedOperationException("No secondary index support.");
     }
 

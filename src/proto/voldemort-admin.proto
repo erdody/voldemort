@@ -265,6 +265,17 @@ message RebalanceStateChangeResponse {
   optional Error error = 1;
 }
 
+message FetchKeysForQueryRequest {
+  required string store = 1;
+  optional string query = 2;
+}
+
+message FetchKeysForQueryResponse {
+  optional bytes key = 1;
+  optional Error error = 2;
+}
+
+
 enum AdminRequestType {
   GET_METADATA = 0;
   UPDATE_METADATA = 1;
@@ -290,6 +301,8 @@ enum AdminRequestType {
   GET_RO_STORAGE_FORMAT = 23;
   REBALANCE_STATE_CHANGE = 24;
   REPAIR_JOB = 25;
+  
+  FETCH_KEYS_FOR_QUERY = 100;
 }
 
 message VoldemortAdminRequest {
@@ -318,4 +331,6 @@ message VoldemortAdminRequest {
   optional GetROStorageFormatRequest get_ro_storage_format = 25;
   optional RebalanceStateChangeRequest rebalance_state_change = 26;
   optional RepairJobRequest repair_job = 27;
+
+  optional FetchKeysForQueryRequest fetch_keys_for_query = 100;
 }

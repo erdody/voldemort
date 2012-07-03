@@ -17,6 +17,7 @@
 package voldemort.store.bdb;
 
 import java.io.File;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Random;
 import java.util.concurrent.Callable;
@@ -71,11 +72,15 @@ public class BdbStorageEngineTest extends AbstractStorageEngineTest {
         databaseConfig.setAllowCreate(true);
         databaseConfig.setTransactional(true);
         databaseConfig.setSortedDuplicates(false);
-        databaseConfig.setBtreeComparator(BdbStorageEngine.VersionedKeyHandler.class);
+        databaseConfig.setBtreeComparator(getBtreeComparator());
         this.database = environment.openDatabase(null, "test", databaseConfig);
         this.runtimeConfig = new BdbRuntimeConfig();
         runtimeConfig.setLockMode(LOCK_MODE);
         this.store = createBdbStorageEngine(runtimeConfig);
+    }
+
+    protected Class<? extends Comparator<byte[]>> getBtreeComparator() {
+        return BdbStorageEngine.VersionedKeyHandler.class;
     }
 
     protected BdbStorageEngine createBdbStorageEngine(BdbRuntimeConfig runtimeConfig) {
@@ -93,7 +98,6 @@ public class BdbStorageEngineTest extends AbstractStorageEngineTest {
         }
     }
 
-    @Override
     public StorageEngine<ByteArray, byte[], byte[]> getStorageEngine() {
         return store;
     }
@@ -161,7 +165,9 @@ public class BdbStorageEngineTest extends AbstractStorageEngineTest {
                                 VectorClock v = (VectorClock) vals.get(0).getVersion();
                                 v.incrementVersion(0, System.currentTimeMillis());
                                 try {
-                                    store.put(new ByteArray(keyBytes), new Versioned<byte[]>(valueBytes, v), null);
+                                    store.put(new ByteArray(keyBytes),
+                                              new Versioned<byte[]>(valueBytes, v),
+                                              null);
                                 } catch(ObsoleteVersionException e) {
                                     // Ignore these
                                 }
@@ -246,9 +252,7 @@ public class BdbStorageEngineTest extends AbstractStorageEngineTest {
 
         if(isSecondaryIndexEnabled()) {
             // just check secondary index was cleared
-            secIdxTestUtils.assertQueryReturns(secIdxTestUtils.query("status",
-                                                                     (byte) 0,
-                                                                     Byte.MAX_VALUE));
+            secIdxTestUtils.assertQueryReturns("status = 0");
         }
     }
 

@@ -45,6 +45,8 @@
 				minOccurs="0" maxOccurs="1" />
 			<xs:element name="retention-scan-throttle-rate" type="xs:nonNegativeInteger"
 				minOccurs="0" maxOccurs="1" />
+			<xs:element name="retention-condition" type="xs:string"
+				minOccurs="0" maxOccurs="1" />
 		</xs:all>
 	</xs:complexType>
 
@@ -101,8 +103,7 @@
 			<xs:element name="name" type="xs:token" />
 			<xs:element name="extractor-type" type="xs:token" />
 			<xs:element name="extractor-info" type="xs:string" />
-			<xs:element name="serializer-type" type="xs:token" />
-			<xs:element name="schema-info" type="schema-info" minOccurs="0" maxOccurs="255" />
+			<xs:element name="field-type" type="xs:string" />
 		</xs:sequence>
 	</xs:complexType>
 

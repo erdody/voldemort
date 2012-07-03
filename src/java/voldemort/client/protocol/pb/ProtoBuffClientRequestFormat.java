@@ -32,7 +32,6 @@ import voldemort.client.protocol.pb.VProto.GetResponse;
 import voldemort.client.protocol.pb.VProto.GetVersionResponse;
 import voldemort.client.protocol.pb.VProto.PutResponse;
 import voldemort.client.protocol.pb.VProto.RequestType;
-import voldemort.secondary.RangeQuery;
 import voldemort.server.RequestRoutingType;
 import voldemort.store.ErrorCodeMapper;
 import voldemort.store.StoreUtils;
@@ -246,7 +245,7 @@ public class ProtoBuffClientRequestFormat implements RequestFormat {
 
     public void writeGetAllKeysRequest(DataOutputStream output,
                                         String storeName,
-                                        RangeQuery query,
+                                        String query,
                                         RequestRoutingType routingType) throws IOException {
         throw new UnsupportedOperationException("No secondary index support.");
     }

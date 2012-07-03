@@ -1,50 +1,41 @@
 package voldemort.store.bdb;
 
-import java.util.Comparator;
+import java.nio.ByteBuffer;
+import java.util.Collections;
 import java.util.List;
-import java.util.Map;
-import java.util.Map.Entry;
-import java.util.Set;
 
-import org.apache.commons.lang.ArrayUtils;
-import org.apache.log4j.Logger;
-
+import surver.pub.expression.Expression;
+import surver.pub.expression.ExpressionParser;
 import voldemort.annotations.Experimental;
-import voldemort.secondary.RangeQuery;
 import voldemort.secondary.SecondaryIndexProcessor;
 import voldemort.store.NoSuchCapabilityException;
-import voldemort.store.PersistenceFailureException;
-import voldemort.store.StorageInitializationException;
 import voldemort.store.StoreCapabilityType;
 import voldemort.utils.ByteArray;
+import voldemort.utils.ByteUtils;
+import voldemort.utils.ClosableIterator;
+import voldemort.versioning.VectorClock;
+import voldemort.versioning.Version;
 import voldemort.versioning.Versioned;
 
-import com.google.common.collect.Maps;
-import com.google.common.collect.Sets;
+import com.google.common.base.Function;
+import com.google.common.collect.ArrayListMultimap;
+import com.google.common.collect.ListMultimap;
+import com.google.common.collect.Lists;
 import com.sleepycat.je.Cursor;
 import com.sleepycat.je.Database;
-import com.sleepycat.je.DatabaseConfig;
 import com.sleepycat.je.DatabaseEntry;
 import com.sleepycat.je.DatabaseException;
 import com.sleepycat.je.Environment;
+import com.sleepycat.je.ForwardCursor;
+import com.sleepycat.je.LockMode;
 import com.sleepycat.je.OperationStatus;
-import com.sleepycat.je.Transaction;
 
 /**
  * {@link BdbStorageEngine} extension that provides secondary index support.
- * <p>
- * Since Voldemort requires to be able to hold many values per key (concurrent
- * versions), the native BDB secondary index feature cannot be used. Instead, we
- * crate one primary BDB database per secondary index, and keep it in synch
- * manually.
  */
 @Experimental
 public class BdbStorageEngineSI extends BdbStorageEngine {
 
-    private static final Logger logger = Logger.getLogger(BdbStorageEngine.class);
-
-    private Map<String, Database> secDbsByField = Maps.newLinkedHashMap();
-    private Map<String, String> secDbNamesByField = Maps.newLinkedHashMap();
     private final SecondaryIndexProcessor secIdxProcessor;
 
     public BdbStorageEngineSI(String name,
@@ -54,264 +45,110 @@ public class BdbStorageEngineSI extends BdbStorageEngine {
                               SecondaryIndexProcessor secIdxProcessor) {
         super(name, environment, database, runtimeConfig);
         this.secIdxProcessor = secIdxProcessor;
-
-        DatabaseConfig secConfig = new DatabaseConfig();
-        secConfig.setAllowCreate(true); // create secondary DB if not present
-        secConfig.setTransactional(true);
-        // we don't need to have records with the same key, we append the pKey
-        // to make it unique and avoid contention.
-        secConfig.setSortedDuplicates(false);
-        secConfig.setBtreeComparator(CompositeKeyHandler.class);
-
-        for(String fieldName: secIdxProcessor.getSecondaryFields()) {
-            String secDbName = getSecDbName(database, fieldName);
-            logger.info("Opening secondary index '" + fieldName + "' db name: " + secDbName);
-            Database secDb = environment.openDatabase(null, secDbName, secConfig);
-            secDbsByField.put(fieldName, secDb);
-            secDbNamesByField.put(fieldName, secDbName);
-        }
-    }
-
-    private String getSecDbName(Database primaryDB, String secFieldName) {
-        return primaryDB.getDatabaseName() + "__" + secFieldName;
     }
 
     @Override
-    protected boolean reopenBdbDatabase() {
-        super.reopenBdbDatabase();
-        try {
-            for(Entry<String, Database> entry: secDbsByField.entrySet()) {
-                Database secDb = entry.getValue();
-                entry.setValue(secDb.getEnvironment().openDatabase(null,
-                                                                   getSecDbName(bdbDatabase,
-                                                                                entry.getKey()),
-                                                                   secDb.getConfig()));
-            }
-            return true;
-        } catch(DatabaseException e) {
-            throw new StorageInitializationException("Failed to reinitialize BdbStorageEngine for store:"
-                                                             + getName() + " after truncation.",
-                                                     e);
-        }
+    public ClosableIterator<KeyMatch<ByteArray>> keys(String query) {
+        Cursor cursor = getBdbDatabase().openCursor(null, null);
+        return new BdbFilteredKeysIterator(cursor, query);
     }
 
-    @Override
-    protected void closeInternal(Database database) {
-        for(Entry<String, Database> entry: secDbsByField.entrySet()) {
-            entry.getValue().close();
+    private class BdbFilteredKeysIterator extends BdbIterator<KeyMatch<ByteArray>> {
+
+        private Expression condition;
+
+        public BdbFilteredKeysIterator(ForwardCursor cursor, String query) {
+            super(cursor, true);
+            condition = ExpressionParser.parse(query, secIdxProcessor.getQueryFieldDefinitions());
         }
-        super.closeInternal(database);
-    }
 
-    @Override
-    public Set<ByteArray> getAllKeys(RangeQuery query) {
-        Database secDb = secDbsByField.get(query.getField());
-        Cursor cursor = secDb.openCursor(null, null);
-        Set<ByteArray> result = Sets.newHashSet();
+        private byte[] lastKey = null;
+        private KeyMatch<ByteArray> currentMatch = null;
+        private OperationStatus lastStatus = null;
 
-        byte[] start = (byte[]) query.getStart();
-        byte[] end = (byte[]) query.getEnd();
-
-        BdbKeysRangeIterator it = new BdbKeysRangeIterator(cursor, start, end);
-        try {
-            while(it.hasNext()) {
-                result.add(it.next());
-            }
-        } finally {
-            it.close();
-        }
-        return result;
-    }
-
-    private static class BdbKeysRangeIterator extends BdbIterator<ByteArray> {
-
-        private final byte[] from;
-        private final byte[] to;
-        
-        private final Cursor keyOrderCursor;
-
-        public BdbKeysRangeIterator(Cursor cursor, byte[] from, byte[] to) {
-            super(cursor, false);
-            this.from = CompositeKeyHandler.createCompositeKey(from, new byte[0]);
-            this.to = CompositeKeyHandler.createCompositeKey(to, new byte[0]);
-            this.keyOrderCursor = cursor;
+        @Override
+        protected KeyMatch<ByteArray> get(DatabaseEntry key, DatabaseEntry value) {
+            return currentMatch;
         }
 
         @Override
-        protected ByteArray get(DatabaseEntry key, DatabaseEntry value) {
-            return new ByteArray(CompositeKeyHandler.getPrimaryKey(key.getData()));
-        }
-
-        @Override
-        protected OperationStatus moveCursor(DatabaseEntry key, DatabaseEntry value, boolean isFirst)
+        protected OperationStatus moveCursor(DatabaseEntry key, DatabaseEntry value)
                 throws DatabaseException {
-            OperationStatus opStatus;
-            if(isFirst) {
-                key.setData(from);
-                opStatus = keyOrderCursor.getSearchKeyRange(key, value, null);
+            currentMatch = null;
+
+            if(lastKey == null) {
+                OperationStatus status = cursor.getNext(key, value, LockMode.READ_UNCOMMITTED);
+                if(status != OperationStatus.SUCCESS)
+                    return status;
+                lastKey = key.getData();
             } else {
-                opStatus = keyOrderCursor.getNext(key, value, null);
+                if(lastStatus != OperationStatus.SUCCESS)
+                    return lastStatus;
             }
 
-            if(opStatus == OperationStatus.SUCCESS
-               && CompositeKeyHandler.compareSecondaryKeys(key.getData(), to) > 0) {
-                return OperationStatus.NOTFOUND;
-            }
-            return opStatus;
-        }
-    }
+            do {
+                lastStatus = cursor.getNext(key, value, LockMode.READ_UNCOMMITTED);
+                if(lastStatus == OperationStatus.SUCCESS) {
+                    boolean multipleVersions = keyHandler.compareKeyOnly(lastKey, key.getData()) == 0;
 
-    /*
-    @Override
-    protected void putPostActions(Transaction transaction,
-                                  ByteArray key,
-                                  List<byte[]> deletedVals,
-                                  List<byte[]> remainingVals,
-                                  Versioned<byte[]> value,
-                                  byte[] transforms) {
-        for(byte[] rawVal: deletedVals) {
-            secIndexRemove(transaction,
-                           key,
-                           secIdxProcessor.extractSecondaryValues(getVersionedValue(rawVal).getValue()));
-        }
+                    if(multipleVersions) {
+                        ListMultimap<Boolean, byte[]> partitioned = ArrayListMultimap.create();
 
-        for(byte[] rawVal: remainingVals) {
-            secIndexAdd(transaction,
-                        key,
-                        secIdxProcessor.extractSecondaryValues(getVersionedValue(rawVal).getValue()));
-        }
+                        partitioned.put(match(lastKey), lastKey);
 
-        secIndexAdd(transaction, key, secIdxProcessor.extractSecondaryValues(value.getValue()));
-    }
-    */
+                        do {
+                            lastKey = key.getData();
+                            partitioned.put(match(lastKey), lastKey);
+                            lastStatus = cursor.getNext(key, value, LockMode.READ_UNCOMMITTED);
+                        } while(lastStatus == OperationStatus.SUCCESS
+                                && keyHandler.compareKeyOnly(lastKey, key.getData()) == 0);
 
-    public static class CompositeKeyHandler implements Comparator<byte[]> {
+                        // if any version match
+                        if(!partitioned.get(true).isEmpty()) {
+                            currentMatch = new KeyMatch<ByteArray>(new ByteArray(keyHandler.getRawKey(lastKey)),
+                                                                   toVersion(partitioned.get(true)),
+                                                                   toVersion(partitioned.get(false)));
+                        }
 
-        private static void writeInt(byte[] array, int offset, int v) {
-            array[offset] = (byte) ((v >>> 24) & 0xFF);
-            array[offset + 1] = (byte) ((v >>> 16) & 0xFF);
-            array[offset + 2] = (byte) ((v >>> 8) & 0xFF);
-            array[offset + 3] = (byte) (v & 0xFF);
+                        if(lastStatus == OperationStatus.SUCCESS)
+                            lastKey = key.getData();
+                    } else {
+                        processSingleVersion();
+                        lastKey = key.getData();
+                    }
+                }
+            } while(currentMatch == null && lastStatus == OperationStatus.SUCCESS);
+
+            if(currentMatch == null)
+                processSingleVersion();
+
+            return OperationStatus.SUCCESS;
         }
 
-        private static int readInt(byte[] array, int offset) {
-            int ch1 = array[offset];
-            int ch2 = array[offset + 1];
-            int ch3 = array[offset + 2];
-            int ch4 = array[offset + 3];
-            return ((ch1 << 24) + (ch2 << 16) + (ch3 << 8) + ch4);
+        private List<Version> toVersion(List<byte[]> keys) {
+            return Lists.transform(keys, new Function<byte[], Version>() {
+
+                public Version apply(byte[] key) {
+                    return VersionedKeyHandler.getVectorClock(key);
+                }
+
+            });
         }
 
-        /** Compares both secondary and primary key, to make it unique */
-        public int compare(byte[] cKey1, byte[] cKey2) {
-            return ByteArray.compare(cKey1, 4, cKey1.length - 4, cKey2, 4, cKey2.length - 4);
-        }
-
-        /** Compares secondary keys within the given composite keys */
-        public static int compareSecondaryKeys(byte[] cKey1, byte[] cKey2) {
-            int value1Size = readInt(cKey1, 0);
-            int value2Size = readInt(cKey2, 0);
-            return ByteArray.compare(cKey1, 4, value1Size, cKey2, 4, value2Size);
-        }
-
-        public static byte[] createCompositeKey(byte[] sk, byte[] pk) {
-            byte[] result = new byte[sk.length + pk.length + 4];
-            writeInt(result, 0, sk.length);
-            System.arraycopy(sk, 0, result, 4, sk.length);
-            System.arraycopy(pk, 0, result, 4 + sk.length, pk.length);
-            return result;
-        }
-
-        public static byte[] getPrimaryKey(byte[] compositeKey) {
-            int secKeySize = readInt(compositeKey, 0);
-            int primaryKeySize = compositeKey.length - secKeySize - 4;
-            byte[] result = new byte[primaryKeySize];
-            System.arraycopy(compositeKey, 4 + secKeySize, result, 0, result.length);
-            return result;
-        }
-
-    }
-
-    private final static DatabaseEntry EMPTY_VALUE = new DatabaseEntry(ArrayUtils.EMPTY_BYTE_ARRAY);
-    private final static DatabaseEntry PARTIAL_ENTRY = new DatabaseEntry(ArrayUtils.EMPTY_BYTE_ARRAY);
-    static {
-        PARTIAL_ENTRY.setPartial(0, 0, true);
-    }
-
-    private void secIndexAdd(Transaction tx, ByteArray key, Map<String, byte[]> values) {
-        for(Entry<String, byte[]> entry: values.entrySet()) {
-            String fieldName = entry.getKey();
-            byte[] fieldValue = entry.getValue();
-
-            Cursor cursor = secDbsByField.get(fieldName).openCursor(tx, null);
-            try {
-                DatabaseEntry keyEntry = new DatabaseEntry(CompositeKeyHandler.createCompositeKey(fieldValue,
-                                                                                                  key.get()));
-                OperationStatus status = cursor.put(keyEntry, EMPTY_VALUE);
-                if(logger.isTraceEnabled())
-                    logger.trace("Putting sec idx " + fieldName + ". key: " + keyEntry);
-                if(status != OperationStatus.SUCCESS)
-                    throw new PersistenceFailureException("Put operation failed with status: "
-                                                          + status);
-            } finally {
-                cursor.close();
+        private void processSingleVersion() {
+            if(match(lastKey)) {
+                currentMatch = new KeyMatch<ByteArray>(new ByteArray(keyHandler.getRawKey(lastKey)),
+                                                       Collections.<Version> singletonList(VersionedKeyHandler.getVectorClock(lastKey)),
+                                                       Collections.<Version> emptyList());
             }
         }
-    }
 
-    private void secIndexRemove(Transaction tx, ByteArray key, Map<String, byte[]> values) {
-        for(Entry<String, byte[]> entry: values.entrySet()) {
-            String fieldName = entry.getKey();
-
-            Cursor cursor = secDbsByField.get(fieldName).openCursor(tx, null);
-            try {
-                DatabaseEntry keyEntry = new DatabaseEntry(CompositeKeyHandler.createCompositeKey(entry.getValue(),
-                                                                                                  key.get()));
-                OperationStatus status = cursor.getSearchKey(keyEntry, PARTIAL_ENTRY, null);
-                if(logger.isTraceEnabled())
-                    logger.trace("Removing sec idx " + fieldName + ". key: " + keyEntry);
-                if(status == OperationStatus.NOTFOUND)
-                    continue;
-                if(status != OperationStatus.SUCCESS)
-                    throw new PersistenceFailureException("Search operation failed with status: "
-                                                          + status);
-                status = cursor.delete();
-                if(status != OperationStatus.SUCCESS)
-                    throw new PersistenceFailureException("Delete operation failed with status: "
-                                                          + status);
-            } finally {
-                cursor.close();
-            }
-        }
-    }
-
-    @Override
-    protected boolean truncatePostActions(Transaction tx) {
-        for(String secDbName: secDbNamesByField.values()) {
-            environment.truncateDatabase(tx, secDbName, false);
-        }
-        return true;
-    }
-
-    /*
-    @Override
-    protected void deletePostActions(Transaction transaction,
-                                     ByteArray key,
-                                     List<byte[]> deletedVals,
-                                     List<byte[]> remainingVals) {
-        for(byte[] rawVal: deletedVals) {
-            secIndexRemove(transaction,
-                           key,
-                           secIdxProcessor.extractSecondaryValues(getVersionedValue(rawVal).getValue()));
+        private boolean match(byte[] vKey) {
+            byte[] secIdxValues = SIVersionedKeyHandler.getSecIdxBytes(vKey);
+            return condition.evaluate(secIdxProcessor.parseSecValues(secIdxValues));
         }
 
-        for(byte[] rawVal: remainingVals) {
-            secIndexAdd(transaction,
-                        key,
-                        secIdxProcessor.extractSecondaryValues(getVersionedValue(rawVal).getValue()));
-        }
     }
-    */
 
     @Override
     public Object getCapability(StoreCapabilityType capability) {
@@ -321,6 +158,49 @@ public class BdbStorageEngineSI extends BdbStorageEngine {
             default:
                 throw new NoSuchCapabilityException(capability, getName());
         }
+    }
+
+    @Override
+    public VersionedKeyHandler getKeyHandler() {
+        return new SIVersionedKeyHandler();
+    }
+
+    public static class SIVersionedKeyHandler extends VersionedKeyHandler {
+
+        private static final byte[] EMPTY = serializeSize((short) 0);
+
+        @Override
+        protected byte[] getEmptyPayload() {
+            return ByteUtils.cat(super.getEmptyPayload(), EMPTY);
+        }
+
+        @Override
+        protected int getPayloadSize(byte[] vKey) {
+            int superSize = super.getPayloadSize(vKey);
+            return ByteBuffer.wrap(vKey, superSize, 2).getShort() + 2 + superSize;
+        }
+
+        private static byte[] serializeSize(short size) {
+            return ByteBuffer.allocate(2).putShort(size).array();
+        }
+
+        static byte[] getSecIdxBytes(byte[] vKey) {
+            // TODO clean up, use VersionedKeyHandler
+            int superSize = VectorClock.getSize(vKey, 0);
+            int secIdxSize = ByteBuffer.wrap(vKey, superSize, 2).getShort();
+            int secIdxPos = superSize + 2;
+
+            return ByteUtils.copy(vKey, secIdxPos, secIdxPos + secIdxSize);
+        }
+    }
+
+    @Override
+    protected byte[] assembleKeyPayload(ByteArray key, Versioned<byte[]> value) {
+        byte[] secIdxBlock = secIdxProcessor.extractSecondaryValues(value.getValue());
+        short secIdxBlockLength = (short) secIdxBlock.length;
+        return ByteUtils.cat(super.assembleKeyPayload(key, value),
+                             SIVersionedKeyHandler.serializeSize(secIdxBlockLength),
+                             secIdxBlock);
     }
 
 }

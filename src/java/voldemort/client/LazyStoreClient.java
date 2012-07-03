@@ -18,12 +18,10 @@ package voldemort.client;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.Callable;
 
 import voldemort.VoldemortException;
 import voldemort.cluster.Node;
-import voldemort.secondary.RangeQuery;
 import voldemort.versioning.ObsoleteVersionException;
 import voldemort.versioning.Version;
 import voldemort.versioning.Versioned;
@@ -123,9 +121,5 @@ public class LazyStoreClient<K, V> implements StoreClient<K, V> {
 
     public List<Node> getResponsibleNodes(K key) {
         return getStoreClient().getResponsibleNodes(key);
-    }
-
-    public Set<K> getAllKeys(RangeQuery query) {
-        return getStoreClient().getAllKeys(query);
     }
 }

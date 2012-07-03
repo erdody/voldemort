@@ -16,34 +16,42 @@
 
 package voldemort.scheduled;
 
+import java.util.Date;
+import java.util.HashSet;
 import java.util.List;
 import java.util.concurrent.Semaphore;
 
 import junit.framework.TestCase;
 import voldemort.MockTime;
+import voldemort.secondary.SecondaryIndexTestUtils;
 import voldemort.server.scheduler.DataCleanupJob;
 import voldemort.store.StorageEngine;
-import voldemort.store.memory.InMemoryStorageEngine;
+import voldemort.store.memory.InMemoryStorageEngineSI;
+import voldemort.utils.ByteArray;
+import voldemort.utils.DefaultIterable;
 import voldemort.utils.EventThrottler;
 import voldemort.utils.Time;
 import voldemort.versioning.VectorClock;
 import voldemort.versioning.Versioned;
 
+import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Sets;
+
 public class DataCleanupJobTest extends TestCase {
 
     private MockTime time;
-    private StorageEngine<String, String, String> engine;
+    private StorageEngine<ByteArray, byte[], byte[]> engine;
 
     @Override
     public void setUp() {
         time = new MockTime();
-        engine = new InMemoryStorageEngine<String, String, String>("test");
+        engine = new InMemoryStorageEngineSI("test", SecondaryIndexTestUtils.SEC_IDX_PROCESSOR);
     }
 
     public void testCleanupCleansUp() {
-        time.setTime(123);
         put("a", "b", "c");
-        time.setTime(123 + Time.MS_PER_DAY + 1);
+
+        time.addMilliseconds(Time.MS_PER_DAY + 1);
         put("d", "e", "f");
         assertContains("a", "b", "c", "d", "e", "f");
 
@@ -51,11 +59,12 @@ public class DataCleanupJobTest extends TestCase {
         put("a");
 
         // now run cleanup
-        new DataCleanupJob<String, String, String>(engine,
-                                                   new Semaphore(1),
-                                                   Time.MS_PER_DAY,
-                                                   time,
-                                                   new EventThrottler(1)).run();
+        new DataCleanupJob<ByteArray, byte[], byte[]>(engine,
+                                                      new Semaphore(1),
+                                                      Time.MS_PER_DAY,
+                                                      time,
+                                                      new EventThrottler(1),
+                                                      null).run();
 
         // Check that all the later keys are there AND the key updated later
         assertContains("a", "d", "e", "f");
@@ -63,8 +72,9 @@ public class DataCleanupJobTest extends TestCase {
 
     private void put(String... items) {
         for(String item: items) {
+            ByteArray key = serializeKey(item);
             VectorClock clock = null;
-            List<Versioned<String>> found = engine.get(item, null);
+            List<Versioned<byte[]>> found = engine.get(key, null);
             if(found.size() == 0) {
                 clock = new VectorClock(time.getMilliseconds());
             } else if(found.size() == 1) {
@@ -73,15 +83,63 @@ public class DataCleanupJobTest extends TestCase {
             } else {
                 fail("Found multiple versions.");
             }
-            engine.put(item, new Versioned<String>(item, clock), null);
+            byte[] value = SecondaryIndexTestUtils.createTestSerializedValue(item,
+                                                                             0,
+                                                                             new Date(),
+                                                                             "company",
+                                                                             true);
+            engine.put(key, new Versioned<byte[]>(value, clock), null);
         }
     }
 
+    private ByteArray serializeKey(String key) {
+        return new ByteArray(key.getBytes());
+    }
+
     private void assertContains(String... keys) {
-        for(String key: keys) {
-            List<Versioned<String>> found = engine.get(key, null);
-            assertTrue("Did not find key '" + key + "' in store!", found.size() > 0);
+        HashSet<String> got = Sets.newLinkedHashSet();
+        for(ByteArray serKey: new DefaultIterable<ByteArray>(engine.keys())) {
+            got.add(new String(serKey.get()));
         }
+
+        assertEquals(ImmutableSet.of(keys), got);
+    }
+
+    private void put(String key, int status, Date lastmod, String company, Boolean feedless) {
+        byte[] value = SecondaryIndexTestUtils.createTestSerializedValue(key,
+                                                                         status,
+                                                                         lastmod,
+                                                                         company,
+                                                                         feedless);
+        engine.put(serializeKey(key), new Versioned<byte[]>(value, new VectorClock()), null);
+    }
+
+    public void testCleanupWithCondition() {
+        put("a", 1, time.getCurrentDate(), "c1", true);
+        put("b", 2, time.getCurrentDate(), "c1", true);
+
+        time.addMilliseconds(Time.MS_PER_DAY + Time.MS_PER_SECOND);
+        put("c", 3, time.getCurrentDate(), "c1", true);
+        put("d", 4, time.getCurrentDate(), "c1", true);
+        put("e", 3, time.getCurrentDate(), "c1", false);
+
+        assertContains("a", "b", "c", "d", "e");
+
+        // now run cleanup
+        DataCleanupJob<ByteArray, byte[], byte[]> cleanupJob = new DataCleanupJob<ByteArray, byte[], byte[]>(engine,
+                                                                                                             new Semaphore(1),
+                                                                                                             Time.MS_PER_DAY,
+                                                                                                             time,
+                                                                                                             new EventThrottler(1),
+                                                                                                             "status in {2, 3} and lastmod < ${date} and feedless = true");
+
+        cleanupJob.run();
+        assertContains("a", "c", "d", "e");
+
+        time.addMilliseconds(Time.MS_PER_DAY + Time.MS_PER_SECOND);
+
+        cleanupJob.run();
+        assertContains("a", "d", "e");
     }
 
 }

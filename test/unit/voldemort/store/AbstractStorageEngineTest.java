@@ -16,15 +16,19 @@
 
 package voldemort.store;
 
+import static voldemort.TestUtils.getClock;
+
+import java.util.Collections;
 import java.util.Date;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
-import com.google.common.collect.Iterators;
 import org.junit.Test;
+
 import voldemort.TestUtils;
 import voldemort.secondary.SecondaryIndexTestUtils;
+import voldemort.secondary.SecondaryIndexTestUtils.ByteArrayStorageEngineProvider;
 import voldemort.serialization.StringSerializer;
 import voldemort.store.serialized.SerializingStorageEngine;
 import voldemort.utils.ByteArray;
@@ -34,18 +38,14 @@ import voldemort.versioning.VectorClock;
 import voldemort.versioning.Versioned;
 
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.Iterators;
+import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 
-import static voldemort.TestUtils.getClock;
+public abstract class AbstractStorageEngineTest extends AbstractByteArrayStoreTest implements
+        ByteArrayStorageEngineProvider {
 
-public abstract class AbstractStorageEngineTest extends AbstractByteArrayStoreTest {
-
-    @Override
-    public Store<ByteArray, byte[], byte[]> getStore() {
-        return getStorageEngine();
-    }
-
-    public abstract StorageEngine<ByteArray, byte[], byte[]> getStorageEngine();
+    protected SecondaryIndexTestUtils secIdxTestUtils = new SecondaryIndexTestUtils(this);
 
     public void testGetNoEntries() {
         ClosableIterator<Pair<ByteArray, Versioned<byte[]>>> it = null;
@@ -83,7 +83,8 @@ public abstract class AbstractStorageEngineTest extends AbstractByteArrayStoreTe
     private Map<String, Object> getSerializingValues() {
         Map<String, Object> vals = Maps.newHashMap();
         for(String key: ImmutableList.of("a", "b", "c", "d")) {
-            vals.put(key, SecondaryIndexTestUtils.testValue(key, 1, new Date()));
+            vals.put(key,
+                     SecondaryIndexTestUtils.createTestValue(key, 1, new Date(), "company", true));
         }
         return vals;
     }
@@ -92,17 +93,19 @@ public abstract class AbstractStorageEngineTest extends AbstractByteArrayStoreTe
         StorageEngine<String, Object, String> stringStore = getSerializingStorageEngine();
         Map<String, Object> vals = getSerializingValues();
 
-        for(Map.Entry<String, Object> entry: vals.entrySet())
+        for(Map.Entry<String, Object> entry: vals.entrySet()) {
             stringStore.put(entry.getKey(), new Versioned<Object>(entry.getValue()), null);
-        ClosableIterator<String> iter = stringStore.keys();
-        int count = 0;
-        while(iter.hasNext()) {
-            String key = iter.next();
-            assertTrue(vals.containsKey(key));
-            count++;
         }
-        assertEquals(count, vals.size());
+
+        List<String> expected = Lists.newArrayList(vals.keySet());
+        Collections.sort(expected);
+
+        ClosableIterator<String> iter = stringStore.keys();
+        List<String> returnedKeys = Lists.newArrayList(iter);
         iter.close();
+        Collections.sort(returnedKeys);
+
+        assertEquals(expected, returnedKeys);
     }
 
     public void testIterationWithSerialization() {
@@ -186,12 +189,14 @@ public abstract class AbstractStorageEngineTest extends AbstractByteArrayStoreTe
         engine.put(getKey(), new Versioned<byte[]>(value, c2), null);
         assertEntries(3, engine.entries(), engine.keys());
     }
-    
+
     private void assertEntries(int expected, ClosableIterator... its) {
         try {
-            for (ClosableIterator it : its) assertEquals(expected, Iterators.size(it));
+            for(ClosableIterator it: its)
+                assertEquals(expected, Iterators.size(it));
         } finally {
-            for (ClosableIterator it : its) it.close();
+            for(ClosableIterator it: its)
+                it.close();
         }
     }
 
@@ -206,6 +211,18 @@ public abstract class AbstractStorageEngineTest extends AbstractByteArrayStoreTe
             }
         }
         return removedSomething;
+    }
+
+    @Test
+    public void testSecondaryIndex() throws Exception {
+        if(!isSecondaryIndexEnabled())
+            return;
+        secIdxTestUtils.testSecondaryIndex();
+    }
+
+    @Override
+    public Store<ByteArray, byte[], byte[]> getStore() {
+        return getStorageEngine();
     }
 
 }

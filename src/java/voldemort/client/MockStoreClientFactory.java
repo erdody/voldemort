@@ -136,10 +136,7 @@ public class MockStoreClientFactory implements StoreClientFactory {
         if(resolver != null)
             secondaryResolver = resolver;
 
-        Store store = new VersionIncrementingStore(new InMemoryStorageEngineSI(storeName,
-                                                                               secIdxProcessor),
-                                                   nodeId,
-                                                   time);
+        Store store = new VersionIncrementingStore(getStorageEngine(storeName), nodeId, time);
         if(isSerialized())
             store = new SerializingStore(store,
                                          keySerializer,
@@ -151,6 +148,11 @@ public class MockStoreClientFactory implements StoreClientFactory {
                                                                                         new ChainedResolver<Versioned<V1>>(new VectorClockInconsistencyResolver(),
                                                                                                                            secondaryResolver));
         return consistentStore;
+    }
+
+    private StorageEngine getStorageEngine(String storeName) {
+        return secIdxProcessor != null ? new InMemoryStorageEngineSI(storeName, secIdxProcessor)
+                                      : new InMemoryStorageEngine(storeName);
     }
 
     private <K1, V1, T1> Store<K1, V1, T1> getRawStore(String storeName) {

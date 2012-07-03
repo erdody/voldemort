@@ -20,6 +20,7 @@ import voldemort.client.ClientConfig;
 import voldemort.client.SocketStoreClientFactory;
 import voldemort.client.StoreClient;
 import voldemort.client.StoreClientFactory;
+import voldemort.client.protocol.admin.AdminClient;
 import voldemort.cluster.Cluster;
 import voldemort.cluster.Node;
 import voldemort.secondary.SecondaryIndexTestUtils;
@@ -38,11 +39,13 @@ public class SecondaryEndToEndTest {
 
     private static final String STORE_NAME = "test-secondary-index";
     private static final String STORE_NAME_WITH_COMPRESSION = "test-secondary-index-with-compression";
-    private static final String STORES_XML = "test/common/voldemort/config/stores.xml";
+    private static final String STORES_XML = "test/common/voldemort/config/stores-secondary-index.xml";
     private final SocketStoreFactory socketStoreFactory = new ClientRequestExecutorPool(2,
                                                                                         10000,
                                                                                         100000,
                                                                                         32 * 1024);
+    private AdminClient adminClient;
+
     private final boolean useNio;
 
     private StoreClientFactory storeClientFactory;
@@ -76,11 +79,13 @@ public class SecondaryEndToEndTest {
         Node node = cluster.getNodeById(0);
         String bootstrapUrl = "tcp://" + node.getHost() + ":" + node.getSocketPort();
         storeClientFactory = new SocketStoreClientFactory(new ClientConfig().setBootstrapUrls(bootstrapUrl));
+        adminClient = ServerTestUtils.getAdminClient(cluster);
     }
 
     @After
     public void tearDown() {
         socketStoreFactory.close();
+        adminClient.stop();
     }
 
     private StoreClient<String, Map<String, ?>> getStoreClient(String storeName) {
@@ -92,7 +97,9 @@ public class SecondaryEndToEndTest {
      */
     @Test
     public void testSanity() {
-        SecondaryIndexTestUtils.clientGetAllKeysTest(getStoreClient(STORE_NAME));
+        new SecondaryIndexTestUtils.FunctionalTest(STORE_NAME,
+                                                   getStoreClient(STORE_NAME),
+                                                   adminClient).testSecondaryQuery();
     }
 
     /**
@@ -100,7 +107,9 @@ public class SecondaryEndToEndTest {
      */
     @Test
     public void testSanityWithCompression() {
-        SecondaryIndexTestUtils.clientGetAllKeysTest(getStoreClient(STORE_NAME_WITH_COMPRESSION));
+        new SecondaryIndexTestUtils.FunctionalTest(STORE_NAME_WITH_COMPRESSION,
+                                                   getStoreClient(STORE_NAME_WITH_COMPRESSION),
+                                                   adminClient).testSecondaryQuery();
     }
 
 }

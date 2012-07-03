@@ -41,7 +41,6 @@ import voldemort.cluster.Cluster;
 import voldemort.routing.RouteToAllStrategy;
 import voldemort.routing.RoutingStrategy;
 import voldemort.routing.RoutingStrategyFactory;
-import voldemort.secondary.RangeQuery;
 import voldemort.server.rebalance.RebalancerState;
 import voldemort.store.StorageEngine;
 import voldemort.store.Store;
@@ -585,7 +584,7 @@ public class MetadataStore implements StorageEngine<ByteArray, byte[], byte[]> {
         return false;
     }
 
-    public Set<ByteArray> getAllKeys(RangeQuery query) {
+    public ClosableIterator<KeyMatch<ByteArray>> keys(String query) {
         throw new UnsupportedOperationException("No secondary index support.");
     }
 

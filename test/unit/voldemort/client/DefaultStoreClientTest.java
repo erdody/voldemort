@@ -29,10 +29,8 @@ import java.util.Map;
 import org.junit.Before;
 import org.junit.Test;
 
-import voldemort.secondary.SecondaryIndexTestUtils;
 import voldemort.serialization.Serializer;
 import voldemort.serialization.StringSerializer;
-import voldemort.store.AbstractByteArrayStoreTest;
 import voldemort.utils.SystemTime;
 import voldemort.utils.Time;
 import voldemort.versioning.ObsoleteVersionException;
@@ -180,26 +178,6 @@ public class DefaultStoreClientTest {
         result = client.getAll(Arrays.asList("m", "s"));
         assertNotNull(client.get("k").getVersion());
         assertEquals(0, result.size());
-    }
-
-    private StoreClient<String, Map<String, ?>> setUpSecondary() {
-        return new MockStoreClientFactory(new StringSerializer(),
-                                          SecondaryIndexTestUtils.VALUE_SERIALIZER,
-                                          null,
-                                          new StringSerializer(),
-                                          SecondaryIndexTestUtils.SEC_IDX_PROCESSOR,
-                                          nodeId,
-                                          time).getStoreClient("test");
-    }
-
-    /**
-     * Check basic secondary index functionality through the store client
-     * interface.
-     * More thorough testing is done
-     * in {@link AbstractByteArrayStoreTest#testSecondaryIndex()}
-     */
-    public void testGetAllKeys() {
-        SecondaryIndexTestUtils.clientGetAllKeysTest(setUpSecondary());
     }
 
 }

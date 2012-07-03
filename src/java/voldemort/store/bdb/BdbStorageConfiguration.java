@@ -17,9 +17,9 @@
 package voldemort.store.bdb;
 
 import java.io.File;
+import java.util.Comparator;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
-import java.util.logging.Level;
 
 import org.apache.log4j.Logger;
 
@@ -33,12 +33,15 @@ import voldemort.utils.ByteArray;
 import voldemort.utils.Time;
 
 import com.google.common.collect.Maps;
+import com.sleepycat.je.CacheMode;
 import com.sleepycat.je.Database;
 import com.sleepycat.je.DatabaseConfig;
 import com.sleepycat.je.DatabaseException;
 import com.sleepycat.je.Environment;
 import com.sleepycat.je.EnvironmentConfig;
 import com.sleepycat.je.EnvironmentStats;
+import com.sleepycat.je.PreloadConfig;
+import com.sleepycat.je.PreloadStats;
 import com.sleepycat.je.StatsConfig;
 
 /**
@@ -101,8 +104,11 @@ public class BdbStorageConfiguration implements StorageConfiguration {
         environmentConfig.setConfigParam(EnvironmentConfig.CLEANER_MAX_BATCH_FILES,
                                          Integer.toString(config.getBdbCleanerMaxBatchFiles()));
 
-//        environmentConfig.setConfigParam(EnvironmentConfig.CONSOLE_LOGGING_LEVEL, "FINEST");
-//        java.util.logging.Logger.getLogger("").setLevel(Level.FINEST);
+        environmentConfig.setCacheMode(CacheMode.EVICT_LN);
+
+        // environmentConfig.setConfigParam(EnvironmentConfig.CONSOLE_LOGGING_LEVEL,
+        // "FINEST");
+        // java.util.logging.Logger.getLogger("").setLevel(Level.FINEST);
 
         environmentConfig.setLockTimeout(config.getBdbLockTimeoutMs(), TimeUnit.MILLISECONDS);
         databaseConfig = new DatabaseConfig();
@@ -110,14 +116,16 @@ public class BdbStorageConfiguration implements StorageConfiguration {
         databaseConfig.setSortedDuplicates(config.isBdbSortedDuplicatesEnabled());
         databaseConfig.setNodeMaxEntries(config.getBdbBtreeFanout());
         databaseConfig.setTransactional(true);
-        if (!config.isBdbSortedDuplicatesEnabled()) {
-            databaseConfig.setBtreeComparator(BdbStorageEngine.VersionedKeyHandler.class);
-        }
-        
+        databaseConfig.setBtreeComparator(getBtreeComparator());
+
         bdbMasterDir = config.getBdbDataDirectory();
         useOneEnvPerStore = config.isBdbOneEnvPerStore();
         if(useOneEnvPerStore)
             environmentConfig.setSharedCache(true);
+    }
+
+    protected Class<? extends Comparator<byte[]>> getBtreeComparator() {
+        return BdbStorageEngine.VersionedKeyHandler.class;
     }
 
     public StorageEngine<ByteArray, byte[], byte[]> getStore(String storeName) {
@@ -125,6 +133,11 @@ public class BdbStorageConfiguration implements StorageConfiguration {
             try {
                 Environment environment = getEnvironment(storeName);
                 Database db = environment.openDatabase(null, storeName, databaseConfig);
+
+                final PreloadConfig preloadConfig = new PreloadConfig();
+                final PreloadStats preloadStats = db.preload(preloadConfig);
+                logger.info("Preload STATS " + preloadStats);
+
                 BdbRuntimeConfig runtimeConfig = new BdbRuntimeConfig(voldemortConfig);
                 return createStore(storeName, environment, db, runtimeConfig);
             } catch(DatabaseException d) {

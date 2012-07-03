@@ -19,7 +19,6 @@ package voldemort.store.routed;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
@@ -28,7 +27,6 @@ import voldemort.cluster.Cluster;
 import voldemort.cluster.Zone;
 import voldemort.cluster.failuredetector.FailureDetector;
 import voldemort.routing.RoutingStrategyType;
-import voldemort.secondary.RangeQuery;
 import voldemort.store.Store;
 import voldemort.store.StoreDefinition;
 import voldemort.store.StoreRequest;
@@ -38,12 +36,10 @@ import voldemort.store.routed.Pipeline.Event;
 import voldemort.store.routed.Pipeline.Operation;
 import voldemort.store.routed.action.ConfigureNodes;
 import voldemort.store.routed.action.GetAllConfigureNodes;
-import voldemort.store.routed.action.GetAllKeysConfigureNodes;
 import voldemort.store.routed.action.GetAllReadRepair;
 import voldemort.store.routed.action.IncrementClock;
 import voldemort.store.routed.action.PerformDeleteHintedHandoff;
 import voldemort.store.routed.action.PerformParallelDeleteRequests;
-import voldemort.store.routed.action.PerformParallelGetAllKeysRequests;
 import voldemort.store.routed.action.PerformParallelGetAllRequests;
 import voldemort.store.routed.action.PerformParallelPutRequests;
 import voldemort.store.routed.action.PerformParallelRequests;
@@ -531,37 +527,4 @@ public class PipelineRoutedStore extends RoutedStore {
         super.close();
     }
 
-    public Set<ByteArray> getAllKeys(RangeQuery query) {
-        GetAllKeysPipelineData pipelineData = new GetAllKeysPipelineData();
-        Pipeline pipeline = new Pipeline(Operation.GET_ALL, timeoutMs, TimeUnit.MILLISECONDS);
-
-        pipeline.addEventAction(Event.STARTED,
-                                new GetAllKeysConfigureNodes(pipelineData,
-                                                             Event.CONFIGURED,
-                                                             failureDetector,
-                                                             storeDef.getPreferredReads(),
-                                                             storeDef.getRequiredReads(),
-                                                             routingStrategy,
-                                                             clientZone));
-
-        // Number of nodes we tolerate to fail
-        int nodesCanFail = storeDef.getReplicationFactor() - storeDef.getRequiredReads();
-        int requiredTotal = routingStrategy.getNodes().size() - nodesCanFail;
-        pipeline.addEventAction(Event.CONFIGURED,
-                                new PerformParallelGetAllKeysRequests(pipelineData,
-                                                                      failureDetector,
-                                                                      timeoutMs,
-                                                                      nonblockingStores,
-                                                                      query,
-                                                                      requiredTotal,
-                                                                      storeDef.getRequiredReads()));
-
-        pipeline.addEvent(Event.STARTED);
-        pipeline.execute();
-
-        if(pipelineData.getFatalError() != null)
-            throw pipelineData.getFatalError();
-
-        return pipelineData.getResult();
-    }
 }

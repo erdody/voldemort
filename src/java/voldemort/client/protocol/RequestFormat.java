@@ -22,9 +22,7 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
-import voldemort.secondary.RangeQuery;
 import voldemort.server.RequestRoutingType;
 import voldemort.utils.ByteArray;
 import voldemort.versioning.VectorClock;
@@ -69,29 +67,6 @@ public interface RequestFormat {
 
     public Map<ByteArray, List<Versioned<byte[]>>> readGetAllResponse(DataInputStream stream)
             throws IOException;
-
-    /**
-     * Write a request to retrieve all the keys that correspond to the given
-     * range query, using a secondary index.
-     */
-    public void writeGetAllKeysRequest(DataOutputStream output,
-                                       String storeName,
-                                       RangeQuery query,
-                                       RequestRoutingType routingType) throws IOException;
-
-    /**
-     * @return true if the response to
-     *         {@link #writeGetAllKeysRequest(DataOutputStream, String, RangeQuery, RequestRoutingType)}
-     *         is complete.
-     */
-    public boolean isCompleteGetAllKeysResponse(ByteBuffer buffer);
-
-    /**
-     * Read the response to
-     * {@link #writeGetAllKeysRequest(DataOutputStream, String, RangeQuery, RequestRoutingType)}
-     * , a set of all the matching keys.
-     */
-    public Set<ByteArray> readGetAllKeysResponse(DataInputStream stream) throws IOException;
 
     public void writePutRequest(DataOutputStream output,
                                 String storeName,

@@ -43,6 +43,7 @@ public class StoreDefinitionBuilder {
     private Integer hintPrefListSize = null;
     private List<String> owners = null;
     private List<SecondaryIndexDefinition> secondaryIndexDefinitions = Collections.emptyList();
+    private String retentionCondition = null;
 
     public String getName() {
         return Utils.notNull(name);
@@ -166,6 +167,15 @@ public class StoreDefinitionBuilder {
 
     public StoreDefinitionBuilder setRetentionPeriodDays(Integer retentionPeriodDays) {
         this.retentionPeriodDays = retentionPeriodDays;
+        return this;
+    }
+
+    public String getRetentionCondition() {
+        return retentionCondition;
+    }
+
+    public StoreDefinitionBuilder setRetentionCondition(String retentionCondition) {
+        this.retentionCondition = retentionCondition;
         return this;
     }
 
@@ -310,7 +320,8 @@ public class StoreDefinitionBuilder {
                                    this.getHintedHandoffStrategy(),
                                    this.getHintPrefListSize(),
                                    this.getOwners(),
-                                   this.getSecondaryIndexes());
+                                   this.getSecondaryIndexes(),
+                                   this.getRetentionCondition());
     }
 
 }

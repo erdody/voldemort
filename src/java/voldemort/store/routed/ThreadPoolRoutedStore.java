@@ -22,7 +22,6 @@ import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -40,7 +39,6 @@ import voldemort.VoldemortException;
 import voldemort.cluster.Cluster;
 import voldemort.cluster.Node;
 import voldemort.cluster.failuredetector.FailureDetector;
-import voldemort.secondary.RangeQuery;
 import voldemort.store.InsufficientOperationalNodesException;
 import voldemort.store.Store;
 import voldemort.store.StoreDefinition;
@@ -56,12 +54,8 @@ import voldemort.versioning.Version;
 import voldemort.versioning.Versioned;
 
 import com.google.common.base.Function;
-import com.google.common.collect.HashMultiset;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
-import com.google.common.collect.Multiset;
-import com.google.common.collect.Multiset.Entry;
-import com.google.common.collect.Sets;
 
 /**
  * A Store which multiplexes requests to different internal Stores
@@ -930,129 +924,11 @@ public class ThreadPoolRoutedStore extends RoutedStore {
     }
 
     // TODO What to do about timeouts? They should be longer as
-    // getAllKeys is likely to
+    // getAll is likely to
     // take longer. At the moment, it's just timeoutMs * 3, but should
     // this be based on the number of the keys?
     private long getLongTimeout() {
         return timeoutMs * 3;
-    }
-
-    public Set<ByteArray> getAllKeys(RangeQuery query) {
-        int nodesCanFail = storeDef.getReplicationFactor() - storeDef.getRequiredReads();
-        int requiredTotal = routingStrategy.getNodes().size() - nodesCanFail;
-        int requiredPerKey = storeDef.getRequiredReads();
-
-        List<Callable<GetAllKeysResult>> callables = Lists.newArrayList();
-        for(Node node: routingStrategy.getNodes()) {
-            if(failureDetector.isAvailable(node))
-                callables.add(new GetAllKeysCallable(node, query));
-        }
-
-        if(callables.size() < requiredTotal) {
-            throw new InsufficientOperationalNodesException(String.format("Not enough nodes to perform getAllKeys operation %s/%s",
-                                                                          callables.size(),
-                                                                          requiredTotal));
-        }
-
-        // A list of thrown exceptions, indicating the number of failures
-        List<Throwable> failures = Lists.newArrayList();
-        int successCount = 0;
-
-        List<Future<GetAllKeysResult>> futures;
-        try {
-            futures = executor.invokeAll(callables, getLongTimeout(), TimeUnit.MILLISECONDS);
-        } catch(InterruptedException e) {
-            throw new InsufficientOperationalNodesException("getAllKeys operation interrupted.", e);
-        }
-
-        Multiset<ByteArray> responses = HashMultiset.create();
-        for(Future<GetAllKeysResult> f: futures) {
-            if(f.isCancelled()) {
-                logger.warn("GetKeysBySecondary operation timed out after " + timeoutMs + " ms.");
-                continue;
-            }
-            try {
-                GetAllKeysResult getResult = f.get();
-                if(getResult.exception != null) {
-                    if(getResult.exception instanceof VoldemortApplicationException) {
-                        throw (VoldemortException) getResult.exception;
-                    }
-                    failures.add(getResult.exception);
-                    continue;
-                }
-                responses.addAll(getResult.retrieved);
-                successCount++;
-            } catch(InterruptedException e) {
-                throw new InsufficientOperationalNodesException("getAllKeys operation interrupted.",
-                                                                e);
-            } catch(ExecutionException e) {
-                // We catch all Throwables apart from Error in the callable, so
-                // the else part
-                // should never happen
-                if(e.getCause() instanceof Error)
-                    throw (Error) e.getCause();
-                else
-                    logger.error(e.getMessage(), e);
-            }
-        }
-
-        if(successCount < requiredTotal)
-            throw new InsufficientOperationalNodesException(requiredTotal + " reads required, but "
-                                                                    + successCount + " succeeded.",
-                                                            failures);
-
-        // filter by number of responses, to discard partial deletes
-        Set<ByteArray> result = Sets.newHashSet();
-        for(Entry<ByteArray> entry: responses.entrySet()) {
-            if(entry.getCount() >= requiredPerKey)
-                result.add(entry.getElement());
-        }
-
-        return result;
-    }
-
-    private final class GetAllKeysCallable implements Callable<GetAllKeysResult> {
-
-        private final Node node;
-        private final RangeQuery query;
-
-        private GetAllKeysCallable(Node node, RangeQuery query) {
-            this.node = node;
-            this.query = query;
-        }
-
-        public GetAllKeysResult call() {
-            Set<ByteArray> retrieved = Sets.newHashSet();
-            Throwable exception = null;
-            long startNs = System.nanoTime();
-            try {
-                retrieved = innerStores.get(node.getId()).getAllKeys(query);
-                recordSuccess(node, startNs);
-            } catch(UnreachableStoreException e) {
-                exception = e;
-                recordException(node, startNs, e);
-            } catch(Throwable e) {
-                if(e instanceof Error)
-                    throw (Error) e;
-                exception = e;
-                logger.warn("Error in GET KEYS BY SECONDARY on node " + node.getId() + "("
-                                    + node.getHost() + ")",
-                            e);
-            }
-            return new GetAllKeysResult(retrieved, exception);
-        }
-    }
-
-    private static class GetAllKeysResult {
-
-        final Set<ByteArray> retrieved;
-        /* Note that this can never be an Error subclass */
-        final Throwable exception;
-
-        private GetAllKeysResult(Set<ByteArray> retrieved, Throwable exception) {
-            this.exception = exception;
-            this.retrieved = retrieved;
-        }
     }
 
 }

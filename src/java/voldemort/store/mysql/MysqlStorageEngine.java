@@ -22,14 +22,12 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 import javax.sql.DataSource;
 
 import org.apache.log4j.Logger;
 
 import voldemort.VoldemortException;
-import voldemort.secondary.RangeQuery;
 import voldemort.store.NoSuchCapabilityException;
 import voldemort.store.PersistenceFailureException;
 import voldemort.store.StorageEngine;
@@ -399,7 +397,7 @@ public class MysqlStorageEngine implements StorageEngine<ByteArray, byte[], byte
         return false;
     }
 
-    public Set<ByteArray> getAllKeys(RangeQuery query) {
+    public ClosableIterator<KeyMatch<ByteArray>> keys(String query) {
         throw new UnsupportedOperationException("No secondary index support.");
     }
 

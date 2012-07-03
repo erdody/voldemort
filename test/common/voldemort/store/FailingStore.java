@@ -18,10 +18,8 @@ package voldemort.store;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 import voldemort.VoldemortException;
-import voldemort.secondary.RangeQuery;
 import voldemort.utils.Utils;
 import voldemort.versioning.Version;
 import voldemort.versioning.Versioned;
@@ -79,10 +77,6 @@ public class FailingStore<K, V, T> implements Store<K, V, T> {
     }
 
     public java.util.List<Version> getVersions(K key) {
-        throw getException();
-    }
-
-    public Set<K> getAllKeys(RangeQuery query) {
         throw getException();
     }
 

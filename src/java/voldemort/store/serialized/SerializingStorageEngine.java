@@ -130,4 +130,9 @@ public class SerializingStorageEngine<K, V, T> extends SerializingStore<K, V, T>
     public boolean isPartitionAware() {
         return storageEngine.isPartitionAware();
     }
+
+    public ClosableIterator<KeyMatch<K>> keys(String query) {
+        throw new UnsupportedOperationException("No secondary index support.");
+    }
+
 }

@@ -556,7 +556,8 @@ public class StorageService extends AbstractService {
                                                                             storeDef.getRetentionDays()
                                                                                     * Time.MS_PER_DAY,
                                                                             SystemTime.INSTANCE,
-                                                                            throttler);
+                                                                            throttler,
+                                                                            storeDef.getRetentionCondition());
 
         this.scheduler.schedule("cleanup-" + storeDef.getName(),
                                 cleanupJob,
@@ -686,7 +687,8 @@ public class StorageService extends AbstractService {
                                                                                            storeDef.getRetentionDays()
                                                                                                    * Time.MS_PER_DAY,
                                                                                            SystemTime.INSTANCE,
-                                                                                           new EventThrottler(entryScanThrottleRate)));
+                                                                                           new EventThrottler(entryScanThrottleRate),
+                                                                                           storeDef.getRetentionCondition()));
                         } else {
                             logger.error("forceCleanupOldData() No permit available to run cleanJob already running multiple instance."
                                          + engine.getName());

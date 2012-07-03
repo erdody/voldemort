@@ -51,6 +51,7 @@ public class StoreDefinition implements Serializable {
     private final int requiredReads;
     private final Integer retentionPeriodDays;
     private final Integer retentionScanThrottleRate;
+    private final String retentionCondition;
     private final String routingStrategyType;
     private final String viewOf;
     private final HashMap<Integer, Integer> zoneReplicationFactor;
@@ -87,7 +88,8 @@ public class StoreDefinition implements Serializable {
                            HintedHandoffStrategyType hintedHandoffStrategyType,
                            Integer hintPrefListSize,
                            List<String> owners,
-                           List<SecondaryIndexDefinition> secondaryIndexDefinition) {
+                           List<SecondaryIndexDefinition> secondaryIndexDefinition,
+                           String retentionCondition) {
         this.name = Utils.notNull(name);
         this.type = Utils.notNull(type);
         this.description = description;
@@ -113,6 +115,7 @@ public class StoreDefinition implements Serializable {
         this.hintPrefListSize = hintPrefListSize;
         this.owners = owners;
         this.secondaryIndexDefinition = secondaryIndexDefinition;
+        this.retentionCondition = retentionCondition;
         checkParameterLegality();
     }
 
@@ -275,6 +278,14 @@ public class StoreDefinition implements Serializable {
 
     public Integer getRetentionScanThrottleRate() {
         return this.retentionScanThrottleRate;
+    }
+
+    public boolean hasRetentionCondition() {
+        return this.retentionCondition != null;
+    }
+
+    public String getRetentionCondition() {
+        return this.retentionCondition;
     }
 
     public boolean isView() {

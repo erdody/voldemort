@@ -37,6 +37,7 @@ import voldemort.client.protocol.admin.AdminClient;
 import voldemort.client.protocol.admin.filter.DefaultVoldemortFilter;
 import voldemort.client.protocol.pb.ProtoUtils;
 import voldemort.client.protocol.pb.VAdminProto;
+import voldemort.client.protocol.pb.VAdminProto.FetchKeysForQueryRequest;
 import voldemort.client.protocol.pb.VAdminProto.RebalancePartitionInfoMap;
 import voldemort.client.protocol.pb.VAdminProto.VoldemortAdminRequest;
 import voldemort.client.rebalance.RebalancePartitionsInfo;
@@ -246,6 +247,8 @@ public class AdminServiceRequestHandler implements RequestHandler {
             case REPAIR_JOB:
                 ProtoUtils.writeMessage(outputStream, handleRepairJob(request.getRepairJob()));
                 break;
+            case FETCH_KEYS_FOR_QUERY:
+                return handleFetchKeysForQuery(request.getFetchKeysForQuery());
             default:
                 throw new VoldemortException("Unkown operation " + request.getType());
         }
@@ -1314,6 +1317,10 @@ public class AdminServiceRequestHandler implements RequestHandler {
         }
 
         return storageEngine;
+    }
+
+    private FetchKeysForQueryRequestHandler handleFetchKeysForQuery(FetchKeysForQueryRequest request) {
+        return new FetchKeysForQueryRequestHandler(request, storeRepository, errorCodeMapper);
     }
 
 }

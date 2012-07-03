@@ -22,16 +22,13 @@ import org.junit.Test;
 
 import voldemort.TestUtils;
 import voldemort.secondary.SecondaryIndexTestUtils;
-import voldemort.secondary.SecondaryIndexTestUtils.ByteArrayStoreProvider;
 import voldemort.utils.ByteArray;
 import voldemort.versioning.Versioned;
 
 import com.google.common.collect.Lists;
 
 public abstract class AbstractByteArrayStoreTest extends
-        AbstractStoreTest<ByteArray, byte[], byte[]> implements ByteArrayStoreProvider {
-
-    protected SecondaryIndexTestUtils secIdxTestUtils = new SecondaryIndexTestUtils(this);
+        AbstractStoreTest<ByteArray, byte[], byte[]> {
 
     @Override
     public List<ByteArray> getKeys(int numValues) {
@@ -67,27 +64,19 @@ public abstract class AbstractByteArrayStoreTest extends
         return false;
     }
 
-    @Test
-    public void testSecondaryIndex() throws Exception {
-        if(!isSecondaryIndexEnabled())
-            return;
-
-        secIdxTestUtils.testSecondaryIndex();
+    @Override
+    public ByteArray getKey(int size) {
+        return new ByteArray(TestUtils.randomBytes(size));
     }
 
     @Override
     public List<byte[]> getValues(int numValues) {
-        return secIdxTestUtils.getValues(numValues);
+        return SecondaryIndexTestUtils.getValues(numValues);
     }
 
     @Override
     public byte[] getValue(int size) {
-        return secIdxTestUtils.getValue(size);
-    }
-
-    @Override
-    public ByteArray getKey(int size) {
-        return new ByteArray(TestUtils.randomBytes(size));
+        return SecondaryIndexTestUtils.getValue(size);
     }
 
 }

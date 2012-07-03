@@ -14,8 +14,7 @@ import org.apache.commons.lang.builder.HashCodeBuilder;
  *     <name>status</name>
  *     <extractor-type>map</extractor-type>
  *     <extractor-info>status</extractor-info>
- *     <serializer-type>json</serializer-type>
- *     <schema-info>"int8"</schema-info>
+ *     <field-type>"int8"</schema-info>
  * </secondary-index>
  * }
  * </pre>
@@ -25,19 +24,16 @@ public class SecondaryIndexDefinition {
     private final String name;
     private final String extractorType;
     private final String extractorInfo;
-    private final String serializerType;
-    private final String schemaInfo;
+    private final String fieldType;
 
     public SecondaryIndexDefinition(String name,
                                     String extractorType,
                                     String extractorInfo,
-                                    String serializerType,
-                                    String schemaInfo) {
+                                    String fieldType) {
         this.name = name;
         this.extractorType = extractorType;
         this.extractorInfo = extractorInfo;
-        this.serializerType = serializerType;
-        this.schemaInfo = schemaInfo;
+        this.fieldType = fieldType;
     }
 
     /**
@@ -65,21 +61,16 @@ public class SecondaryIndexDefinition {
         return extractorInfo;
     }
 
-    /** How to serialize the extracted value */
-    public String getSerializerType() {
-        return serializerType;
-    }
-
-    /** Complementary information for {@link #getSerializerType()} */
-    public String getSchemaInfo() {
-        return schemaInfo;
+    /** Type of field */
+    public String getFieldType() {
+        return fieldType;
     }
 
     @Override
     public String toString() {
         return getClass().getSimpleName() + "(name = " + this.name + ", extractor-type = "
-               + extractorType + ", extractor-info = " + extractorInfo + ", serializer-type = "
-               + serializerType + ", schema-info = " + schemaInfo + ")";
+               + extractorType + ", extractor-info = " + extractorInfo + ", field-type = "
+               + fieldType + ")";
     }
 
     @Override
@@ -95,8 +86,7 @@ public class SecondaryIndexDefinition {
         return new EqualsBuilder().append(getName(), def.getName())
                                   .append(getExtractorType(), def.getExtractorType())
                                   .append(getExtractorInfo(), def.getExtractorInfo())
-                                  .append(getSerializerType(), def.getSerializerType())
-                                  .append(getSchemaInfo(), def.getSchemaInfo())
+                                  .append(getFieldType(), def.getFieldType())
                                   .isEquals();
     }
 
@@ -105,8 +95,7 @@ public class SecondaryIndexDefinition {
         return new HashCodeBuilder(11, 41).append(name)
                                           .append(extractorType)
                                           .append(extractorInfo)
-                                          .append(serializerType)
-                                          .append(schemaInfo)
+                                          .append(fieldType)
                                           .toHashCode();
     }
 

@@ -16,17 +16,21 @@
 
 package voldemort.server.scheduler;
 
+import java.text.SimpleDateFormat;
+import java.util.Date;
 import java.util.concurrent.Semaphore;
 
 import org.apache.log4j.Logger;
 
 import voldemort.store.StorageEngine;
+import voldemort.store.StorageEngine.KeyMatch;
 import voldemort.utils.ClosableIterator;
 import voldemort.utils.EventThrottler;
 import voldemort.utils.Pair;
 import voldemort.utils.Time;
 import voldemort.utils.Utils;
 import voldemort.versioning.VectorClock;
+import voldemort.versioning.Version;
 import voldemort.versioning.Versioned;
 
 /**
@@ -43,39 +47,44 @@ public class DataCleanupJob<K, V, T> implements Runnable {
     private final long maxAgeMs;
     private final Time time;
     private final EventThrottler throttler;
+    private final String condition;
 
     public DataCleanupJob(StorageEngine<K, V, T> store,
                           Semaphore cleanupPermits,
                           long maxAgeMs,
                           Time time,
-                          EventThrottler throttler) {
+                          EventThrottler throttler,
+                          String condition) {
         this.store = Utils.notNull(store);
         this.cleanupPermits = Utils.notNull(cleanupPermits);
         this.maxAgeMs = maxAgeMs;
         this.time = time;
         this.throttler = throttler;
+        this.condition = condition;
     }
 
     public void run() {
         acquireCleanupPermit();
-        ClosableIterator<Pair<K, Versioned<V>>> iterator = null;
+
+        CleanupMethod<?> cm = null;
         try {
             logger.info("Starting data cleanup on store \"" + store.getName() + "\"...");
             int deleted = 0;
-            long now = time.getMilliseconds();
-            iterator = store.entries();
 
-            while(iterator.hasNext()) {
+            if(condition != null)
+                cm = new SecIdxMethod();
+            else
+                cm = new VectorClockMethod();
+
+            cm.init();
+            while(cm.iterator.hasNext()) {
                 // check if we have been interrupted
                 if(Thread.currentThread().isInterrupted()) {
                     logger.info("Datacleanup job halted.");
                     return;
                 }
 
-                Pair<K, Versioned<V>> keyAndVal = iterator.next();
-                VectorClock clock = (VectorClock) keyAndVal.getSecond().getVersion();
-                if(now - clock.getTimestamp() > maxAgeMs) {
-                    store.delete(keyAndVal.getFirst(), clock);
+                if(cm.processNext()) {
                     deleted++;
                     if(deleted % 10000 == 0)
                         logger.debug("Deleted item " + deleted);
@@ -89,16 +98,78 @@ public class DataCleanupJob<K, V, T> implements Runnable {
         } catch(Exception e) {
             logger.error("Error in data cleanup job for store " + store.getName() + ": ", e);
         } finally {
-            closeIterator(iterator);
+            closeIterator(cm);
             logger.info("Releasing lock  after data cleanup on \"" + store.getName() + "\".");
             this.cleanupPermits.release();
         }
     }
 
-    private void closeIterator(ClosableIterator<Pair<K, Versioned<V>>> iterator) {
+    abstract class CleanupMethod<IT> {
+
+        ClosableIterator<IT> iterator;
+        final long nowMs;
+
+        public CleanupMethod() {
+            this.nowMs = time.getMilliseconds();
+        }
+
+        public abstract boolean processNext();
+
+        public abstract void init();
+
+    }
+
+    class VectorClockMethod extends CleanupMethod<Pair<K, Versioned<V>>> {
+
+        @Override
+        public boolean processNext() {
+            Pair<K, Versioned<V>> keyAndVal = iterator.next();
+            VectorClock clock = (VectorClock) keyAndVal.getSecond().getVersion();
+            if(nowMs - clock.getTimestamp() > maxAgeMs) {
+                store.delete(keyAndVal.getFirst(), clock);
+                return true;
+            }
+            return false;
+        }
+
+        @Override
+        public void init() {
+            iterator = store.entries();
+        }
+
+    }
+
+    class SecIdxMethod extends CleanupMethod<KeyMatch<K>> {
+
+        private final static String LIMIT_PLACEHOLDER = "${date}";
+
+        private final SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssZ");
+
+        @Override
+        public boolean processNext() {
+            KeyMatch<K> keyMatch = iterator.next();
+            if(keyMatch != null) {
+                for(Version version: keyMatch.getMatchingVersions()) {
+                    store.delete(keyMatch.getKey(), version);
+                }
+            }
+            return keyMatch != null;
+        }
+
+        @Override
+        public void init() {
+            String formattedDate = dateFormat.format(new Date(nowMs - maxAgeMs));
+            String formattedCondition = condition.replace(LIMIT_PLACEHOLDER, "'" + formattedDate
+                                                                             + "'");
+            iterator = store.keys(formattedCondition);
+        }
+
+    }
+
+    private void closeIterator(CleanupMethod<?> cm) {
         try {
-            if(iterator != null)
-                iterator.close();
+            if(cm != null)
+                cm.iterator.close();
         } catch(Exception e) {
             logger.error("Error in closing iterator " + store.getName() + " ", e);
         }

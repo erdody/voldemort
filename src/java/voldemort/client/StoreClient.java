@@ -18,11 +18,9 @@ package voldemort.client;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 import voldemort.annotations.concurrency.Threadsafe;
 import voldemort.cluster.Node;
-import voldemort.secondary.RangeQuery;
 import voldemort.versioning.ObsoleteVersionException;
 import voldemort.versioning.Version;
 import voldemort.versioning.Versioned;
@@ -93,14 +91,6 @@ public interface StoreClient<K, V> {
      * @return A Map of keys to versioned values.
      */
     public Map<K, Versioned<V>> getAll(Iterable<K> keys);
-
-    /**
-     * Gets all the keys for values that match the given query.
-     * 
-     * @param query query that defines the range of secondary values to look up
-     * @return Set of matching keys
-     */
-    public Set<K> getAllKeys(RangeQuery query);
 
     /**
      * Like {@link voldemort.client.StoreClient#getAll(Iterable) getAll}, except

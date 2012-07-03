@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <classpath>
+	<classpathentry kind="lib" path="lib/protobuf-java-2.4.1.jar"/>
 	<classpathentry kind="src" path="src/java"/>
 	<classpathentry kind="src" path="contrib/ec2-testing/resources"/>
 	<classpathentry kind="src" path="contrib/ec2-testing/src/java"/>
@@ -37,10 +38,8 @@
 	<classpathentry kind="lib" path="lib/commons-logging-1.1.1.jar"/>
 	<classpathentry kind="lib" path="lib/jline-0.9.94.jar"/>
 	<classpathentry kind="lib" path="lib/commons-pool-1.5.2.jar"/>
-	<classpathentry kind="lib" path="lib/protobuf-java-2.3.0.jar"/>
 	<classpathentry kind="lib" path="contrib/ec2-testing/lib/typica.jar"/>
 	<classpathentry kind="lib" path="lib/google-collect-1.0.jar"/>
-	<classpathentry kind="lib" path="lib/je-4.0.92.jar"/>
 	<classpathentry kind="lib" path="lib/paranamer-2.1.jar"/>
 	<classpathentry kind="lib" path="lib/jackson-mapper-asl-1.4.0.jar"/>
 	<classpathentry kind="lib" path="lib/jackson-core-asl-1.4.0.jar"/>
@@ -49,5 +48,7 @@
 	<classpathentry kind="lib" path="lib/mockito-all-1.8.5.jar"/>
 	<classpathentry kind="lib" path="lib/avro-1.4.0.jar"/>
 	<classpathentry kind="lib" path="lib/libthrift-0.5.0.jar"/>
+	<classpathentry kind="lib" path="lib/je-5.0.34.jar"/>
+	<classpathentry kind="lib" path="lib/expressions.jar"/>
 	<classpathentry kind="output" path="classes"/>
 </classpath>

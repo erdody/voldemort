@@ -16,9 +16,18 @@
 
 package voldemort.store;
 
+import java.util.List;
+
+import org.apache.commons.lang.builder.EqualsBuilder;
+import org.apache.commons.lang.builder.HashCodeBuilder;
+import org.apache.commons.lang.builder.ToStringBuilder;
+
 import voldemort.utils.ClosableIterator;
 import voldemort.utils.Pair;
+import voldemort.versioning.Version;
 import voldemort.versioning.Versioned;
+
+import com.google.common.collect.Sets;
 
 /**
  * A base storage class which is actually responsible for data persistence. This
@@ -78,4 +87,82 @@ public interface StorageEngine<K, V, T> extends Store<K, V, T> {
      */
     public boolean isPartitionAware();
 
+    /**
+     * Retrieves all the keys that comply with the given query.
+     * 
+     * <p>
+     * Note that the iterator need not be threadsafe, and that it must be
+     * manually closed after use.
+     * 
+     * @return set of matching keys.
+     */
+    public ClosableIterator<KeyMatch<K>> keys(String query);
+
+    public class KeyMatch<K> {
+
+        private final K key;
+
+        private final List<? extends Version> matchingVersions;
+
+        private final List<? extends Version> unmatchingVersions;
+
+        public KeyMatch(K key,
+                        List<? extends Version> matchingVersions,
+                        List<? extends Version> unmatchingVersions) {
+            this.key = key;
+            this.matchingVersions = matchingVersions;
+            this.unmatchingVersions = unmatchingVersions;
+        }
+
+        public K getKey() {
+            return key;
+        }
+
+        public List<? extends Version> getMatchingVersions() {
+            return matchingVersions;
+        }
+
+        public List<? extends Version> getUnmatchingVersions() {
+            return unmatchingVersions;
+        }
+
+        /**
+         * Implementation note: This should be needed for testing only, it
+         * compares versions with no special order.
+         */
+        @Override
+        public boolean equals(Object obj) {
+            if(obj == null) {
+                return false;
+            }
+            if(obj == this) {
+                return true;
+            }
+            if(obj.getClass() != getClass()) {
+                return false;
+            }
+            @SuppressWarnings("unchecked")
+            KeyMatch<K> rhs = (KeyMatch<K>) obj;
+            return new EqualsBuilder().append(key, rhs.key)
+                                      .append(Sets.newHashSet(matchingVersions),
+                                              Sets.newHashSet(rhs.matchingVersions))
+                                      .append(Sets.newHashSet(unmatchingVersions),
+                                              Sets.newHashSet(rhs.unmatchingVersions))
+                                      .isEquals();
+        }
+
+        @Override
+        public int hashCode() {
+            return new HashCodeBuilder().append(key)
+                                        .append(Sets.newHashSet(matchingVersions))
+                                        .append(Sets.newHashSet(unmatchingVersions))
+                                        .toHashCode();
+        }
+
+        @Override
+        public String toString() {
+            return ToStringBuilder.reflectionToString(this);
+        }
+
+    }
 }

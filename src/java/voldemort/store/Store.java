@@ -18,11 +18,9 @@ package voldemort.store;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 import voldemort.VoldemortException;
 import voldemort.annotations.concurrency.Threadsafe;
-import voldemort.secondary.RangeQuery;
 import voldemort.versioning.Version;
 import voldemort.versioning.Versioned;
 
@@ -103,12 +101,5 @@ public interface Store<K, V, T> {
     public Object getCapability(StoreCapabilityType capability);
 
     public List<Version> getVersions(K key);
-
-    /**
-     * Retrieves all the keys that comply with the given query.
-     * 
-     * @return set of matching keys.
-     */
-    public Set<K> getAllKeys(RangeQuery query);
 
 }

@@ -27,7 +27,6 @@ public class KratiStorageEngineTest extends AbstractStorageEngineTest {
                                             storeDir);
     }
 
-    @Override
     public StorageEngine<ByteArray, byte[], byte[]> getStorageEngine() {
         return this.store;
     }

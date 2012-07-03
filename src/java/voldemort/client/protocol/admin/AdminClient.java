@@ -2234,4 +2234,76 @@ public class AdminClient {
         return stealerNodeToPlan;
     }
 
+    private void initiateFetchKeysForQueryRequest(DataOutputStream outputStream,
+                                                  String storeName,
+                                                  String query) throws IOException {
+        VAdminProto.FetchKeysForQueryRequest.Builder fetchRequest = VAdminProto.FetchKeysForQueryRequest.newBuilder()
+                                                                                                        .setStore(storeName)
+                                                                                                        .setQuery(query);
+
+        VAdminProto.VoldemortAdminRequest request = VAdminProto.VoldemortAdminRequest.newBuilder()
+                                                                                     .setType(VAdminProto.AdminRequestType.FETCH_KEYS_FOR_QUERY)
+                                                                                     .setFetchKeysForQuery(fetchRequest)
+                                                                                     .build();
+        ProtoUtils.writeMessage(outputStream, request);
+        outputStream.flush();
+    }
+
+    public Iterator<ByteArray> fetchKeysForQuery(Integer nodeId, String storeName, String query) {
+
+        Node node = this.getAdminClientCluster().getNodeById(nodeId);
+        final SocketDestination destination = new SocketDestination(node.getHost(),
+                                                                    node.getAdminPort(),
+                                                                    RequestFormatType.ADMIN_PROTOCOL_BUFFERS);
+        final SocketAndStreams sands = pool.checkout(destination);
+        DataOutputStream outputStream = sands.getOutputStream();
+        final DataInputStream inputStream = sands.getInputStream();
+
+        try {
+            initiateFetchKeysForQueryRequest(outputStream, storeName, query);
+        } catch(IOException e) {
+            close(sands.getSocket());
+            pool.checkin(destination, sands);
+            throw new VoldemortException(e);
+        }
+
+        return new AbstractIterator<ByteArray>() {
+
+            @Override
+            public ByteArray computeNext() {
+                try {
+                    int size = inputStream.readInt();
+                    if(size == -1) {
+                        pool.checkin(destination, sands);
+                        return endOfData();
+                    }
+
+                    VAdminProto.FetchKeysForQueryResponse response = responseFromQueryStream(inputStream,
+                                                                                             size);
+
+                    if(response.hasError()) {
+                        pool.checkin(destination, sands);
+                        throwException(response.getError());
+                    }
+
+                    return ProtoUtils.decodeBytes(response.getKey());
+                } catch(IOException e) {
+                    close(sands.getSocket());
+                    pool.checkin(destination, sands);
+                    throw new VoldemortException(e);
+                }
+
+            }
+        };
+    }
+
+    private VAdminProto.FetchKeysForQueryResponse responseFromQueryStream(DataInputStream inputStream,
+                                                                          int size)
+            throws IOException {
+        byte[] input = new byte[size];
+        ByteUtils.read(inputStream, input);
+        VAdminProto.FetchKeysForQueryResponse.Builder response = VAdminProto.FetchKeysForQueryResponse.newBuilder();
+        response.mergeFrom(input);
+        return response.build();
+    }
 }

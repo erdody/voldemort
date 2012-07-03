@@ -20,10 +20,8 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 import voldemort.VoldemortException;
-import voldemort.secondary.RangeQuery;
 import voldemort.store.Store;
 import voldemort.store.StoreCapabilityType;
 import voldemort.store.StoreUtils;
@@ -139,10 +137,6 @@ public class CompressingStore implements Store<ByteArray, byte[], byte[]> {
 
     public List<Version> getVersions(ByteArray key) {
         return innerStore.getVersions(deflateKey(key));
-    }
-
-    public Set<ByteArray> getAllKeys(RangeQuery query) {
-        return innerStore.getAllKeys(query);
     }
 
     private List<Versioned<byte[]>> inflateValues(List<Versioned<byte[]>> result) {

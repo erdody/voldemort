@@ -2,11 +2,9 @@ package voldemort.store.views;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 import voldemort.VoldemortException;
 import voldemort.annotations.Experimental;
-import voldemort.secondary.RangeQuery;
 import voldemort.serialization.Serializer;
 import voldemort.store.StorageEngine;
 import voldemort.store.Store;
@@ -172,7 +170,7 @@ public class ViewStorageEngine implements StorageEngine<ByteArray, byte[], byte[
         return target.isPartitionAware();
     }
 
-    public Set<ByteArray> getAllKeys(RangeQuery query) {
+    public ClosableIterator<KeyMatch<ByteArray>> keys(String query) {
         throw new UnsupportedOperationException("No secondary index support.");
     }
 

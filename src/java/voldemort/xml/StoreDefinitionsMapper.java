@@ -104,8 +104,9 @@ public class StoreDefinitionsMapper {
     public final static String STORE_SEC_INDEX_NAME_ELMT = "name";
     public final static String STORE_SEC_INDEX_EXTRACTOR_TYPE_ELMT = "extractor-type";
     public final static String STORE_SEC_INDEX_EXTRACTOR_INFO_ELMT = "extractor-info";
-    public final static String STORE_SEC_INDEX_SERIALIZER_TYPE_ELMT = "serializer-type";
-    public final static String STORE_SEC_INDEX_SCHEMA_INFO_ELMT = "schema-info";
+    public final static String STORE_SEC_INDEX_FIELD_TYPE_ELMT = "field-type";
+
+    public final static String STORE_RETENTION_CONDITION_ELMT = "retention-condition";
 
     private final Schema schema;
 
@@ -230,11 +231,16 @@ public class StoreDefinitionsMapper {
         Element retention = store.getChild(STORE_RETENTION_POLICY_ELMT);
         Integer retentionPolicyDays = null;
         Integer retentionThrottleRate = null;
+        String retentionCondition = null;
         if(retention != null) {
             retentionPolicyDays = Integer.parseInt(retention.getText());
             Element throttleRate = store.getChild(STORE_RETENTION_SCAN_THROTTLE_RATE_ELMT);
             if(throttleRate != null)
                 retentionThrottleRate = Integer.parseInt(throttleRate.getText());
+
+            Element condition = store.getChild(STORE_RETENTION_CONDITION_ELMT);
+            if(condition != null)
+                retentionCondition = condition.getText();
         }
 
         if(routingStrategyType.compareTo(RoutingStrategyType.ZONE_STRATEGY) == 0) {
@@ -281,6 +287,7 @@ public class StoreDefinitionsMapper {
                                            .setHintedHandoffStrategy(hintedHandoffStrategy)
                                            .setHintPrefListSize(hintPrefListSize)
                                            .setSecondaryIndexes(secondaryIndexDefinitions)
+                                           .setRetentionCondition(retentionCondition)
                                            .build();
     }
 
@@ -293,13 +300,11 @@ public class StoreDefinitionsMapper {
                 String name = secIdxElmt.getChildText(STORE_SEC_INDEX_NAME_ELMT);
                 String extractorType = secIdxElmt.getChildText(STORE_SEC_INDEX_EXTRACTOR_TYPE_ELMT);
                 String extractorInfo = secIdxElmt.getChildText(STORE_SEC_INDEX_EXTRACTOR_INFO_ELMT);
-                String serializerType = secIdxElmt.getChildText(STORE_SEC_INDEX_SERIALIZER_TYPE_ELMT);
-                String schemaInfo = secIdxElmt.getChildText(STORE_SEC_INDEX_SCHEMA_INFO_ELMT);
+                String fieldType = secIdxElmt.getChildText(STORE_SEC_INDEX_FIELD_TYPE_ELMT);
                 result.add(new SecondaryIndexDefinition(name,
                                                         extractorType,
                                                         extractorInfo,
-                                                        serializerType,
-                                                        schemaInfo));
+                                                        fieldType));
             }
         }
         return result;
@@ -494,6 +499,9 @@ public class StoreDefinitionsMapper {
         if(storeDefinition.hasRetentionScanThrottleRate())
             store.addContent(new Element(STORE_RETENTION_SCAN_THROTTLE_RATE_ELMT).setText(Integer.toString(storeDefinition.getRetentionScanThrottleRate())));
 
+        if(storeDefinition.hasRetentionCondition())
+            store.addContent(new Element(STORE_RETENTION_CONDITION_ELMT).setText(storeDefinition.getRetentionCondition()));
+
         if(!CollectionUtils.isEmpty(storeDefinition.getSecondaryIndexDefinitions()))
             addSecondaryIndexes(store, storeDefinition.getSecondaryIndexDefinitions());
 
@@ -583,8 +591,7 @@ public class StoreDefinitionsMapper {
             secIdx.addContent(new Element(STORE_SEC_INDEX_NAME_ELMT).setText(def.getName()));
             secIdx.addContent(new Element(STORE_SEC_INDEX_EXTRACTOR_TYPE_ELMT).setText(def.getExtractorType()));
             secIdx.addContent(new Element(STORE_SEC_INDEX_EXTRACTOR_INFO_ELMT).setText(def.getExtractorInfo()));
-            secIdx.addContent(new Element(STORE_SEC_INDEX_SERIALIZER_TYPE_ELMT).setText(def.getSerializerType()));
-            secIdx.addContent(new Element(STORE_SEC_INDEX_SCHEMA_INFO_ELMT).setText(def.getSchemaInfo()));
+            secIdx.addContent(new Element(STORE_SEC_INDEX_FIELD_TYPE_ELMT).setText(def.getFieldType()));
             list.addContent(secIdx);
         }
         parent.addContent(list);

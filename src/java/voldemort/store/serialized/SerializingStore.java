@@ -19,10 +19,8 @@ package voldemort.store.serialized;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 import voldemort.VoldemortException;
-import voldemort.secondary.RangeQuery;
 import voldemort.secondary.SecondaryIndexProcessor;
 import voldemort.serialization.Serializer;
 import voldemort.store.Store;
@@ -33,7 +31,6 @@ import voldemort.utils.Utils;
 import voldemort.versioning.Version;
 import voldemort.versioning.Versioned;
 
-import com.google.common.base.Function;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 
@@ -165,26 +162,6 @@ public class SerializingStore<K, V, T> implements Store<K, V, T> {
 
     public List<Version> getVersions(K key) {
         return store.getVersions(keyToBytes(key));
-    }
-
-    public Set<K> getAllKeys(RangeQuery query) {
-        return Maps.uniqueIndex(store.getAllKeys(serializeQuery(query)),
-                                new Function<ByteArray, K>() {
-
-                                    public K apply(ByteArray key) {
-                                        return keySerializer.toObject(key.get());
-                                    }
-                                }).keySet();
-    }
-
-    /**
-     * Serialize all the query fields to ByteArray.
-     */
-    private RangeQuery serializeQuery(RangeQuery query) {
-        String field = query.getField();
-        return new RangeQuery(field,
-                              secIdxProcessor.serializeValue(field, query.getStart()),
-                              secIdxProcessor.serializeValue(field, query.getEnd()));
     }
 
     public void close() {

@@ -22,7 +22,6 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
@@ -30,7 +29,6 @@ import org.apache.log4j.Logger;
 import voldemort.VoldemortException;
 import voldemort.client.protocol.RequestFormat;
 import voldemort.client.protocol.RequestFormatFactory;
-import voldemort.secondary.RangeQuery;
 import voldemort.server.RequestRoutingType;
 import voldemort.store.NoSuchCapabilityException;
 import voldemort.store.Store;
@@ -46,7 +44,6 @@ import voldemort.store.socket.clientrequest.ClientRequestExecutorPool;
 import voldemort.store.socket.clientrequest.DeleteClientRequest;
 import voldemort.store.socket.clientrequest.GetAllClientRequest;
 import voldemort.store.socket.clientrequest.GetClientRequest;
-import voldemort.store.socket.clientrequest.GetAllKeysRequest;
 import voldemort.store.socket.clientrequest.GetVersionsClientRequest;
 import voldemort.store.socket.clientrequest.PutClientRequest;
 import voldemort.utils.ByteArray;
@@ -131,18 +128,6 @@ public class SocketStore implements Store<ByteArray, byte[], byte[]>, Nonblockin
         requestAsync(clientRequest, callback, timeoutMs, "get all");
     }
 
-    public void submitGetAllKeysRequest(RangeQuery query,
-                                        Map<ByteArray, byte[]> transforms,
-                                        NonblockingStoreCallback callback,
-                                        long timeoutMs) {
-        // StoreUtils.assertValidKeys(keys);
-        GetAllKeysRequest clientRequest = new GetAllKeysRequest(storeName,
-                                                                                requestFormat,
-                                                                                requestRoutingType,
-                                                                                query);
-        requestAsync(clientRequest, callback, timeoutMs, "get all keys");
-    }
-
     public void submitGetVersionsRequest(ByteArray key,
                                          NonblockingStoreCallback callback,
                                          long timeoutMs) {
@@ -201,14 +186,6 @@ public class SocketStore implements Store<ByteArray, byte[], byte[]>, Nonblockin
         return request(clientRequest, "getAll");
     }
 
-    public Set<ByteArray> getAllKeys(RangeQuery query) {
-        GetAllKeysRequest clientRequest = new GetAllKeysRequest(storeName,
-                                                                                requestFormat,
-                                                                                requestRoutingType,
-                                                                                query);
-        return request(clientRequest, "getKeysBySecondary");
-    }
-
     public List<Version> getVersions(ByteArray key) {
         StoreUtils.assertValidKey(key);
         GetVersionsClientRequest clientRequest = new GetVersionsClientRequest(storeName,
@@ -253,8 +230,8 @@ public class SocketStore implements Store<ByteArray, byte[], byte[]>, Nonblockin
      * 
      * @param <T> Return type
      * 
-     * @param clientRequest ClientRequest implementation used to write the
-     *        request and read the response
+     * @param delegate ClientRequest implementation used to write the request
+     *        and read the response
      * @param operationName Simple string representing the type of request
      * 
      * @return Data returned by the individual requests
@@ -289,8 +266,8 @@ public class SocketStore implements Store<ByteArray, byte[], byte[]>, Nonblockin
      * 
      * @param <T> Return type
      * 
-     * @param clientRequest ClientRequest implementation used to write the
-     *        request and read the response
+     * @param delegate ClientRequest implementation used to write the request
+     *        and read the response
      * @param operationName Simple string representing the type of request
      * 
      * @return Data returned by the individual requests

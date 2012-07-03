@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 
+import surver.pub.expression.FieldDefinition;
 import voldemort.serialization.Serializer;
 
 import com.google.common.collect.Lists;
@@ -17,64 +18,56 @@ import com.google.common.collect.Maps;
 public class DefaultSecondaryIndexProcessor implements SecondaryIndexProcessor {
 
     private final Serializer<?> valueSerializer;
-    private final Map<String, Serializer<?>> secSerializersByField;
+    private final Serializer<Object> secIdxSerializer;
     private final Map<String, SecondaryIndexValueExtractor<?, ?>> secIdxExtractors;
+    private final List<FieldDefinition> queryFieldDefinitions;
 
     /**
      * New secondary index processor.
      * 
      * @param valueSerializer how to transform primary byte arrays from/to an
      *        object
-     * @param secIdxSerializers secondary field serializers (by secondary field
-     *        name).
-     * 
+     * @param secIdxSerializer secondary field serializer
      * @param secIdxExtractors secondary field value extractors (by secondary
      *        field name).
      */
     public DefaultSecondaryIndexProcessor(Serializer<?> valueSerializer,
-                                          Map<String, Serializer<?>> secIdxSerializers,
-                                          Map<String, SecondaryIndexValueExtractor<?, ?>> secIdxExtractors) {
+                                          Serializer<Object> secIdxSerializer,
+                                          Map<String, SecondaryIndexValueExtractor<?, ?>> secIdxExtractors,
+                                          List<FieldDefinition> queryFieldDefinitions) {
         this.valueSerializer = valueSerializer;
-        this.secSerializersByField = secIdxSerializers;
+        this.secIdxSerializer = secIdxSerializer;
         this.secIdxExtractors = secIdxExtractors;
+        this.queryFieldDefinitions = queryFieldDefinitions;
     }
 
-    public Map<String, byte[]> extractSecondaryValues(byte[] value) {
-        Object obj = valueSerializer.toObject(value);
+    public byte[] extractSecondaryValues(byte[] serializedValue) {
+        Object obj = valueSerializer.toObject(serializedValue);
 
-        Map<String, byte[]> result = Maps.newHashMap();
-        for(Entry<String, Serializer<?>> entry: secSerializersByField.entrySet()) {
+        Map<String, Object> values = Maps.newHashMap();
+        for(Entry<String, SecondaryIndexValueExtractor<?, ?>> entry: secIdxExtractors.entrySet()) {
             String fieldName = entry.getKey();
-            Object secObj = getExtractor(fieldName).extractValue(obj);
-            result.put(fieldName, serializeValue(fieldName, secObj));
+            values.put(fieldName, extract(entry.getValue(), obj));
         }
-        return result;
+        return secIdxSerializer.toBytes(values);
     }
 
     @SuppressWarnings("unchecked")
-    private Serializer<Object> getSerializer(String fieldName) {
-        return (Serializer<Object>) secSerializersByField.get(fieldName);
-    }
-
-    @SuppressWarnings("unchecked")
-    private SecondaryIndexValueExtractor<Object, Object> getExtractor(String fieldName) {
-        return (SecondaryIndexValueExtractor<Object, Object>) secIdxExtractors.get(fieldName);
-    }
-
-    public byte[] serializeValue(String fieldName, Object value) {
-        Serializer<Object> serializer = getSerializer(fieldName);
-        if(serializer == null)
-            throw new IllegalArgumentException("Secondary index field not found: " + fieldName);
-        try {
-            return serializer.toBytes(value);
-        } catch(Exception ex) {
-            throw new IllegalArgumentException("Could not interpret value " + value + " for field "
-                                               + fieldName, ex);
-        }
+    private Object extract(SecondaryIndexValueExtractor<?, ?> extractor, Object obj) {
+        return ((SecondaryIndexValueExtractor<Object, Object>) extractor).extractValue(obj);
     }
 
     public List<String> getSecondaryFields() {
-        return Lists.newArrayList(secSerializersByField.keySet());
+        return Lists.newArrayList(secIdxExtractors.keySet());
+    }
+
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> parseSecValues(byte[] values) {
+        return (Map<String, Object>) secIdxSerializer.toObject(values);
+    }
+
+    public List<FieldDefinition> getQueryFieldDefinitions() {
+        return queryFieldDefinitions;
     }
 
 }

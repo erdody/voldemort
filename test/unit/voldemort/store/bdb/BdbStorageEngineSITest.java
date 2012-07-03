@@ -16,6 +16,10 @@
 
 package voldemort.store.bdb;
 
+import java.util.Comparator;
+
+import voldemort.secondary.SecondaryIndexTestUtils;
+
 /** Unit test for {@link BdbStorageEngineSI} */
 public class BdbStorageEngineSITest extends BdbStorageEngineTest {
 
@@ -25,7 +29,12 @@ public class BdbStorageEngineSITest extends BdbStorageEngineTest {
                                       database.getEnvironment(),
                                       database,
                                       runtimeConfig,
-                                      secIdxTestUtils.getSecIdxProcessor());
+                                      SecondaryIndexTestUtils.getSecIdxProcessor());
+    }
+
+    @Override
+    protected Class<? extends Comparator<byte[]>> getBtreeComparator() {
+        return BdbStorageEngineSI.SIVersionedKeyHandler.class;
     }
 
     @Override

@@ -2,13 +2,11 @@ package voldemort.store.pausable;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 import org.apache.log4j.Logger;
 
 import voldemort.VoldemortException;
 import voldemort.annotations.jmx.JmxOperation;
-import voldemort.secondary.RangeQuery;
 import voldemort.store.StorageEngine;
 import voldemort.store.StoreCapabilityType;
 import voldemort.store.memory.InMemoryStorageEngine;
@@ -96,11 +94,6 @@ public class PausableStorageEngine<K, V, T> implements StorageEngine<K, V, T> {
         return inner.getVersions(key);
     }
 
-    public Set<K> getAllKeys(RangeQuery query) {
-        blockIfNecessary();
-        return inner.getAllKeys(query);
-    }
-
     public Object getCapability(StoreCapabilityType capability) {
         return inner.getCapability(capability);
     }
@@ -127,4 +120,10 @@ public class PausableStorageEngine<K, V, T> implements StorageEngine<K, V, T> {
     public boolean isPartitionAware() {
         return inner.isPartitionAware();
     }
+
+    public ClosableIterator<KeyMatch<K>> keys(String query) {
+        blockIfNecessary();
+        return inner.keys(query);
+    }
+
 }

@@ -1,5 +1,6 @@
 package voldemort.store.bdb;
 
+import java.util.Comparator;
 import java.util.List;
 
 import voldemort.secondary.SecondaryIndexProcessor;
@@ -52,6 +53,11 @@ public class BdbStorageConfigurationSI extends BdbStorageConfiguration {
     @Override
     public String getType() {
         return TYPE_NAME_SI;
+    }
+
+    @Override
+    protected Class<? extends Comparator<byte[]>> getBtreeComparator() {
+        return BdbStorageEngineSI.SIVersionedKeyHandler.class;
     }
 
 }

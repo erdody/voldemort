@@ -2,10 +2,8 @@ package voldemort.store;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 import voldemort.VoldemortException;
-import voldemort.secondary.RangeQuery;
 import voldemort.store.memory.InMemoryStorageEngine;
 import voldemort.versioning.Version;
 import voldemort.versioning.Versioned;
@@ -49,10 +47,6 @@ public class FailingReadsStore<K, V, T> implements Store<K, V, T> {
 
     public void put(K key, Versioned<V> value, T transforms) throws VoldemortException {
         engine.put(key, value, transforms);
-    }
-
-    public Set<K> getAllKeys(RangeQuery query) {
-        throw new VoldemortException("Operation failed");
     }
 
 }
