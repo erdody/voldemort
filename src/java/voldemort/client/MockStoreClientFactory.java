@@ -141,8 +141,7 @@ public class MockStoreClientFactory implements StoreClientFactory {
             store = new SerializingStore(store,
                                          keySerializer,
                                          valueSerializer,
-                                         transformsSerializer,
-                                         secIdxProcessor);
+                                         transformsSerializer);
 
         Store<K1, V1, T1> consistentStore = new InconsistencyResolvingStore<K1, V1, T1>(store,
                                                                                         new ChainedResolver<Versioned<V1>>(new VectorClockInconsistencyResolver(),

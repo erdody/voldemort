@@ -95,8 +95,8 @@ public interface Store<K, V, T> {
      * layering.
      * 
      * @param capability The capability type to retrieve
-     * @return The given capability
-     * @throws NoSuchCapabilityException if the capability is not present
+     * @return The given capaiblity
+     * @throws NoSuchCapabilityException if the capaibility is not present
      */
     public Object getCapability(StoreCapabilityType capability);
 

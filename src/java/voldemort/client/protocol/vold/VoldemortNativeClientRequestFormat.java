@@ -297,7 +297,6 @@ public class VoldemortNativeClientRequestFormat implements RequestFormat {
                     case VoldemortOpCode.PUT_OP_CODE:
                         readPutResponse(inputStream);
                         break;
-
                 }
             } catch(VoldemortException e) {
                 // Ignore application-level exceptions
@@ -317,5 +316,4 @@ public class VoldemortNativeClientRequestFormat implements RequestFormat {
             return false;
         }
     }
-
 }

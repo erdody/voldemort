@@ -22,8 +22,6 @@ import java.util.List;
 import voldemort.cluster.Node;
 import voldemort.utils.ByteArray;
 
-import com.google.common.collect.Sets;
-
 public class BasicPipelineData<V> extends PipelineData<ByteArray, V> {
 
     private List<Node> nodes;
@@ -32,9 +30,14 @@ public class BasicPipelineData<V> extends PipelineData<ByteArray, V> {
 
     private int successes;
 
-    private HashSet<Integer> zoneResponses = Sets.newHashSet();
+    private HashSet<Integer> zoneResponses;
 
     private Integer zonesRequired;
+
+    public BasicPipelineData() {
+        super();
+        zoneResponses = new HashSet<Integer>();
+    }
 
     public HashSet<Integer> getZoneResponses() {
         return zoneResponses;

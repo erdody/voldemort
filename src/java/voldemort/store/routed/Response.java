@@ -77,10 +77,6 @@ public class Response<K, V> {
         this.requestTime = requestTime;
     }
 
-    public static <K, V> Response<K, V> create(Node node, K key, V value, long requestTime) {
-        return new Response<K, V>(node, key, value, requestTime);
-    }
-
     public Node getNode() {
         return node;
     }

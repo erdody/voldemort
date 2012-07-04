@@ -169,5 +169,4 @@ public class CompressingStore implements Store<ByteArray, byte[], byte[]> {
         StoreUtils.assertValidKey(key);
         return innerStore.delete(deflateKey(key), version);
     }
-
 }

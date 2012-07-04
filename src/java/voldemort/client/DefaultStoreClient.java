@@ -355,5 +355,4 @@ public class DefaultStoreClient<K, V> implements StoreClient<K, V> {
         return put(key, versioned, transforms);
 
     }
-
 }

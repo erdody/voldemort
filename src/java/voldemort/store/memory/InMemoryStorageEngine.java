@@ -32,12 +32,11 @@ import voldemort.store.StoreCapabilityType;
 import voldemort.store.StoreUtils;
 import voldemort.utils.ClosableIterator;
 import voldemort.utils.Pair;
+import voldemort.utils.Utils;
 import voldemort.versioning.ObsoleteVersionException;
 import voldemort.versioning.Occurred;
 import voldemort.versioning.Version;
 import voldemort.versioning.Versioned;
-
-import com.google.common.collect.Lists;
 
 /**
  * A simple non-persistent, in-memory store. Useful for unit testing.
@@ -50,15 +49,20 @@ public class InMemoryStorageEngine<K, V, T> implements StorageEngine<K, V, T> {
     private final String name;
 
     public InMemoryStorageEngine(String name) {
-        this(name, new ConcurrentHashMap<K, List<Versioned<V>>>());
+        this.name = Utils.notNull(name);
+        this.map = new ConcurrentHashMap<K, List<Versioned<V>>>();
     }
 
     public InMemoryStorageEngine(String name, ConcurrentMap<K, List<Versioned<V>>> map) {
-        this.name = name;
-        this.map = map;
+        this.name = Utils.notNull(name);
+        this.map = Utils.notNull(map);
     }
 
     public void close() {}
+
+    public void deleteAll() {
+        this.map.clear();
+    }
 
     public boolean delete(K key) {
         return delete(key, null);
@@ -75,17 +79,13 @@ public class InMemoryStorageEngine<K, V, T> implements StorageEngine<K, V, T> {
             return false;
         }
         synchronized(values) {
-            List<Versioned<V>> deletedVals = Lists.newArrayList();
-            List<Versioned<V>> remainingVals = Lists.newArrayList();
-
+            boolean deletedSomething = false;
             Iterator<Versioned<V>> iterator = values.iterator();
             while(iterator.hasNext()) {
                 Versioned<V> item = iterator.next();
                 if(item.getVersion().compare(version) == Occurred.BEFORE) {
                     iterator.remove();
-                    deletedVals.add(item);
-                } else {
-                    remainingVals.add(item);
+                    deletedSomething = true;
                 }
             }
             if(values.size() == 0) {
@@ -95,7 +95,7 @@ public class InMemoryStorageEngine<K, V, T> implements StorageEngine<K, V, T> {
                     return false;
             }
 
-            return !deletedVals.isEmpty();
+            return deletedSomething;
         }
     }
 
@@ -141,8 +141,7 @@ public class InMemoryStorageEngine<K, V, T> implements StorageEngine<K, V, T> {
 
                     // Check for existing versions - remember which items to
                     // remove in case of success
-                    List<Versioned<V>> itemsToRemove = Lists.newArrayListWithCapacity(items.size());
-                    List<Versioned<V>> itemsRemaining = Lists.newArrayList();
+                    List<Versioned<V>> itemsToRemove = new ArrayList<Versioned<V>>(items.size());
                     for(Versioned<V> versioned: items) {
                         Occurred occurred = value.getVersion().compare(versioned.getVersion());
                         if(occurred == Occurred.BEFORE) {
@@ -150,8 +149,6 @@ public class InMemoryStorageEngine<K, V, T> implements StorageEngine<K, V, T> {
                                                                + "': " + value.getVersion());
                         } else if(occurred == Occurred.AFTER) {
                             itemsToRemove.add(versioned);
-                        } else {
-                            itemsRemaining.add(versioned);
                         }
                     }
                     items.removeAll(itemsToRemove);
@@ -273,5 +270,4 @@ public class InMemoryStorageEngine<K, V, T> implements StorageEngine<K, V, T> {
     public ClosableIterator<KeyMatch<K>> keys(String query) {
         throw new UnsupportedOperationException("No secondary index support.");
     }
-
 }

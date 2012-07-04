@@ -66,17 +66,24 @@ public class EndToEndTest {
     public void setUp() throws IOException {
         cluster = ServerTestUtils.getLocalCluster(2, new int[][] { { 0, 2, 4, 6 }, { 1, 3, 5, 7 } });
         servers = new ArrayList<VoldemortServer>();
-        for(int i = 0; i < 2; i++) {
-            servers.add(ServerTestUtils.startVoldemortServer(socketStoreFactory,
-                                                             ServerTestUtils.createServerConfig(useNio,
-                                                                                                i,
-                                                                                                TestUtils.createTempDir()
-                                                                                                         .getAbsolutePath(),
-                                                                                                null,
-                                                                                                STORES_XML,
-                                                                                                new Properties()),
-                                                             cluster));
-        }
+        servers.add(ServerTestUtils.startVoldemortServer(socketStoreFactory,
+                                                         ServerTestUtils.createServerConfig(useNio,
+                                                                                            0,
+                                                                                            TestUtils.createTempDir()
+                                                                                                     .getAbsolutePath(),
+                                                                                            null,
+                                                                                            STORES_XML,
+                                                                                            new Properties()),
+                                                         cluster));
+        servers.add(ServerTestUtils.startVoldemortServer(socketStoreFactory,
+                                                         ServerTestUtils.createServerConfig(useNio,
+                                                                                            1,
+                                                                                            TestUtils.createTempDir()
+                                                                                                     .getAbsolutePath(),
+                                                                                            null,
+                                                                                            STORES_XML,
+                                                                                            new Properties()),
+                                                         cluster));
         Node node = cluster.getNodeById(0);
         String bootstrapUrl = "tcp://" + node.getHost() + ":" + node.getSocketPort();
         StoreClientFactory storeClientFactory = new SocketStoreClientFactory(new ClientConfig().setBootstrapUrls(bootstrapUrl));

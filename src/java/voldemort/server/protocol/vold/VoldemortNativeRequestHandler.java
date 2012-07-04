@@ -50,7 +50,6 @@ public class VoldemortNativeRequestHandler extends AbstractRequestHandler implem
     public StreamRequestHandler handleRequest(DataInputStream inputStream,
                                               DataOutputStream outputStream) throws IOException {
         byte opCode = inputStream.readByte();
-
         String storeName = inputStream.readUTF();
         RequestRoutingType routingType = getRoutingType(inputStream);
 
@@ -351,7 +350,6 @@ public class VoldemortNativeRequestHandler extends AbstractRequestHandler implem
             store.put(key, new Versioned<byte[]>(value, clock), transforms);
             outputStream.writeShort(0);
         } catch(VoldemortException e) {
-            e.printStackTrace();
             writeException(outputStream, e);
         }
     }

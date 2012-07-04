@@ -32,8 +32,6 @@ import voldemort.client.protocol.RequestFormatType;
 import voldemort.cluster.Cluster;
 import voldemort.cluster.Node;
 import voldemort.cluster.failuredetector.FailureDetector;
-import voldemort.secondary.SecondaryIndexProcessor;
-import voldemort.secondary.SecondaryIndexProcessorFactory;
 import voldemort.serialization.ByteArraySerializer;
 import voldemort.serialization.IdentitySerializer;
 import voldemort.serialization.SerializationException;
@@ -225,14 +223,10 @@ public abstract class AbstractStoreClientFactory implements StoreClientFactory {
         Serializer<T> transformsSerializer = (Serializer<T>) serializerFactory.getSerializer(storeDef.getTransformsSerializer() != null ? storeDef.getTransformsSerializer()
                                                                                                                                        : new SerializerDefinition("identity"));
 
-        SecondaryIndexProcessor secIdxProcessor = SecondaryIndexProcessorFactory.getProcessor(serializerFactory,
-                                                                                              storeDef.getSecondaryIndexDefinitions(),
-                                                                                              storeDef.getValueSerializer());
         Store<K, V, T> serializedStore = SerializingStore.wrap(store,
                                                                keySerializer,
                                                                valueSerializer,
-                                                               transformsSerializer,
-                                                               secIdxProcessor);
+                                                               transformsSerializer);
 
         // Add inconsistency resolving decorator, using their inconsistency
         // resolver (if they gave us one)

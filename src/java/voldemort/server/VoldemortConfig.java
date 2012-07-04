@@ -22,7 +22,6 @@ import java.io.Serializable;
 import java.util.List;
 import java.util.Properties;
 
-import org.mockito.internal.verification.Times;
 import voldemort.client.protocol.RequestFormatType;
 import voldemort.cluster.failuredetector.FailureDetectorConfig;
 import voldemort.server.scheduler.slop.StreamingSlopPusherJob;
@@ -269,6 +268,7 @@ public class VoldemortConfig implements Serializable {
         this.enablePipelineRoutedStore = props.getBoolean("enable.pipeline.routed.store", true);
         this.enableSlop = props.getBoolean("slop.enable", true);
         this.enableSlopPusherJob = props.getBoolean("slop.pusher.enable", true);
+        this.slopMaxWriteBytesPerSec = props.getBytes("slop.write.byte.per.sec", 10 * 1000 * 1000);
         this.enableVerboseLogging = props.getBoolean("enable.verbose.logging", true);
         this.enableStatTracking = props.getBoolean("enable.stat.tracking", true);
         this.enableServerRouting = props.getBoolean("enable.server.routing", true);

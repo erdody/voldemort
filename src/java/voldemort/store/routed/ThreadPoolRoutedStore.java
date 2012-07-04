@@ -184,8 +184,7 @@ public class ThreadPoolRoutedStore extends RoutedStore {
                     } catch(Exception e) {
                         failures.add(e);
                         logger.warn("Error in DELETE on node " + node.getId() + "("
-                                            + node.getHost() + ")",
-                                    e);
+                                    + node.getHost() + ")", e);
                     } finally {
                         // signal that the operation is complete
                         semaphore.release();
@@ -294,7 +293,11 @@ public class ThreadPoolRoutedStore extends RoutedStore {
 
         List<Future<GetAllResult>> futures;
         try {
-            futures = executor.invokeAll(callables, getLongTimeout(), TimeUnit.MILLISECONDS);
+            // TODO What to do about timeouts? They should be longer as getAll
+            // is likely to
+            // take longer. At the moment, it's just timeoutMs * 3, but should
+            // this be based on the number of the keys?
+            futures = executor.invokeAll(callables, timeoutMs * 3, TimeUnit.MILLISECONDS);
         } catch(InterruptedException e) {
             throw new InsufficientOperationalNodesException("getAll operation interrupted.", e);
         }
@@ -374,8 +377,7 @@ public class ThreadPoolRoutedStore extends RoutedStore {
                             throw e;
                         } catch(Exception e) {
                             logger.warn("Error in GET_ALL on node " + node.getId() + "("
-                                                + node.getHost() + ")",
-                                        e);
+                                        + node.getHost() + ")", e);
                             failures.add(e);
                         }
                     }
@@ -496,7 +498,8 @@ public class ThreadPoolRoutedStore extends RoutedStore {
                                                key,
                                                fetcher.execute(innerStores.get(node.getId()),
                                                                key,
-                                                               transforms), null));
+                                                               transforms),
+                                               null));
                 ++successes;
                 recordSuccess(node, startNs);
             } catch(UnreachableStoreException e) {
@@ -922,13 +925,4 @@ public class ThreadPoolRoutedStore extends RoutedStore {
 
         List<R> execute(Store<ByteArray, byte[], byte[]> store, ByteArray key, byte[] transforms);
     }
-
-    // TODO What to do about timeouts? They should be longer as
-    // getAll is likely to
-    // take longer. At the moment, it's just timeoutMs * 3, but should
-    // this be based on the number of the keys?
-    private long getLongTimeout() {
-        return timeoutMs * 3;
-    }
-
 }

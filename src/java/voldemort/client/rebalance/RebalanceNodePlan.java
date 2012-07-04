@@ -24,11 +24,4 @@ public class RebalanceNodePlan {
     public List<RebalancePartitionsInfo> getRebalanceTaskList() {
         return rebalanceTaskList;
     }
-
-    @Override
-    public String toString() {
-        return "RebalanceNodePlan(stealerNode=" + stealerNode + ", rebalanceTaskList="
-               + rebalanceTaskList + ")";
-
-    }
 }

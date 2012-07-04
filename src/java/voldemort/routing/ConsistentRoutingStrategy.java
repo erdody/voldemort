@@ -24,12 +24,9 @@ import java.util.Set;
 import java.util.SortedMap;
 import java.util.TreeMap;
 
-import org.apache.log4j.Logger;
-
 import voldemort.cluster.Node;
 import voldemort.utils.FnvHashFunction;
 import voldemort.utils.HashFunction;
-import cern.colt.Arrays;
 
 import com.google.common.collect.Sets;
 
@@ -47,8 +44,6 @@ import com.google.common.collect.Sets;
  * 
  */
 public class ConsistentRoutingStrategy implements RoutingStrategy {
-
-    protected final Logger logger = Logger.getLogger(getClass());
 
     private final int numReplicas;
     private final Node[] partitionToNode;
@@ -161,8 +156,6 @@ public class ConsistentRoutingStrategy implements RoutingStrategy {
 
     public List<Integer> getPartitionList(byte[] key) {
         int index = abs(hash.hash(key)) % (Math.max(1, this.partitionToNode.length));
-        if(logger.isTraceEnabled())
-            logger.trace("Partition start for key " + Arrays.toString(key) + ": " + index);
         return getReplicatingPartitionList(index);
     }
 

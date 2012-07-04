@@ -23,7 +23,6 @@ import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 import voldemort.client.protocol.RequestFormat;
 import voldemort.client.protocol.pb.VProto.DeleteResponse;
@@ -241,21 +240,6 @@ public class ProtoBuffClientRequestFormat implements RequestFormat {
     private boolean isCompleteResponse(ByteBuffer buffer) {
         int size = buffer.getInt();
         return buffer.remaining() == size;
-    }
-
-    public void writeGetAllKeysRequest(DataOutputStream output,
-                                        String storeName,
-                                        String query,
-                                        RequestRoutingType routingType) throws IOException {
-        throw new UnsupportedOperationException("No secondary index support.");
-    }
-
-    public boolean isCompleteGetAllKeysResponse(ByteBuffer buffer) {
-        throw new UnsupportedOperationException("No secondary index support.");
-    }
-
-    public Set<ByteArray> readGetAllKeysResponse(DataInputStream stream) throws IOException {
-        throw new UnsupportedOperationException("No secondary index support.");
     }
 
 }

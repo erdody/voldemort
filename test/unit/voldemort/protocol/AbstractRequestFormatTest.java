@@ -18,7 +18,6 @@ import voldemort.client.protocol.RequestFormatType;
 import voldemort.server.RequestRoutingType;
 import voldemort.server.StoreRepository;
 import voldemort.server.protocol.RequestHandler;
-import voldemort.store.StorageEngine;
 import voldemort.store.memory.InMemoryStorageEngine;
 import voldemort.utils.ByteArray;
 import voldemort.versioning.ObsoleteVersionException;
@@ -27,27 +26,20 @@ import voldemort.versioning.Versioned;
 
 public abstract class AbstractRequestFormatTest extends TestCase {
 
-    private final RequestFormatType type;
     private final String storeName;
-    private RequestFormat clientWireFormat;
-    private RequestHandler serverWireFormat;
-    private StorageEngine<ByteArray, byte[], byte[]> store;
+    private final RequestFormat clientWireFormat;
+    private final RequestHandler serverWireFormat;
+    private final InMemoryStorageEngine<ByteArray, byte[], byte[]> store;
 
     public AbstractRequestFormatTest(RequestFormatType type) {
-        this.type = type;
         this.storeName = "test";
-        setUpStore(new InMemoryStorageEngine<ByteArray, byte[], byte[]>(storeName));
-    }
-
-    private void setUpStore(StorageEngine<ByteArray, byte[], byte[]> store) {
-        this.store = store;
+        this.store = new InMemoryStorageEngine<ByteArray, byte[], byte[]>(storeName);
         StoreRepository repository = new StoreRepository();
         repository.addLocalStore(store);
         repository.addRoutedStore(store);
         this.clientWireFormat = new RequestFormatFactory().getRequestFormat(type);
         this.serverWireFormat = ServerTestUtils.getSocketRequestHandlerFactory(repository)
                                                .getRequestHandler(type);
-
     }
 
     public void testNullKeys() throws Exception {
@@ -120,7 +112,7 @@ public abstract class AbstractRequestFormatTest extends TestCase {
                 assertEquals(0, values.size());
             }
         } finally {
-            this.store.truncate();
+            this.store.deleteAll();
         }
     }
 
@@ -144,11 +136,9 @@ public abstract class AbstractRequestFormatTest extends TestCase {
                           new boolean[] { true });
 
         testGetAllRequest(new ByteArray[] { TestUtils.toByteArray("hello"),
-                                  TestUtils.toByteArray("holly") },
-                          new byte[][] { "world".getBytes(), "cow".getBytes() },
-                          null,
-                          new VectorClock[] { TestUtils.getClock(1, 1), TestUtils.getClock(1, 2) },
-                          new boolean[] { true, false });
+                TestUtils.toByteArray("holly") }, new byte[][] { "world".getBytes(),
+                "cow".getBytes() }, null, new VectorClock[] { TestUtils.getClock(1, 1),
+                TestUtils.getClock(1, 2) }, new boolean[] { true, false });
     }
 
     public void testGetAllRequest(ByteArray[] keys,
@@ -184,7 +174,7 @@ public abstract class AbstractRequestFormatTest extends TestCase {
                 }
             }
         } finally {
-            this.store.truncate();
+            this.store.deleteAll();
         }
     }
 
@@ -231,7 +221,7 @@ public abstract class AbstractRequestFormatTest extends TestCase {
         } catch(Exception e) {
             assertEquals("Unexpected exception " + e.getClass().getName(), e.getClass(), exception);
         } finally {
-            this.store.truncate();
+            this.store.deleteAll();
         }
     }
 
@@ -269,7 +259,7 @@ public abstract class AbstractRequestFormatTest extends TestCase {
             boolean wasDeleted = this.clientWireFormat.readDeleteResponse(inputStream(delResponse));
             assertEquals(isDeleted, wasDeleted);
         } finally {
-            this.store.truncate();
+            this.store.deleteAll();
         }
     }
 

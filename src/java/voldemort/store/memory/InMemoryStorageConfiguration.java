@@ -16,10 +16,14 @@
 
 package voldemort.store.memory;
 
+import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
+
 import voldemort.server.VoldemortConfig;
 import voldemort.store.StorageConfiguration;
 import voldemort.store.StorageEngine;
 import voldemort.utils.ByteArray;
+import voldemort.versioning.Versioned;
 
 /**
  * A storage engine that uses a java.util.ConcurrentHashMap to hold the entries
@@ -36,7 +40,8 @@ public class InMemoryStorageConfiguration implements StorageConfiguration {
     public InMemoryStorageConfiguration(VoldemortConfig config) {}
 
     public StorageEngine<ByteArray, byte[], byte[]> getStore(String name) {
-        return new InMemoryStorageEngine<ByteArray, byte[], byte[]>(name);
+        return new InMemoryStorageEngine<ByteArray, byte[], byte[]>(name,
+                                                                    new ConcurrentHashMap<ByteArray, List<Versioned<byte[]>>>());
     }
 
     public String getType() {

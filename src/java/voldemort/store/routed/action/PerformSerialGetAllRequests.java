@@ -30,8 +30,8 @@ import voldemort.store.InsufficientOperationalNodesException;
 import voldemort.store.Store;
 import voldemort.store.routed.GetAllPipelineData;
 import voldemort.store.routed.Pipeline;
-import voldemort.store.routed.Pipeline.Event;
 import voldemort.store.routed.Response;
+import voldemort.store.routed.Pipeline.Event;
 import voldemort.utils.ByteArray;
 import voldemort.utils.Time;
 import voldemort.versioning.Versioned;
@@ -118,10 +118,10 @@ public class PerformSerialGetAllRequests
                     Map<ByteArray, List<Versioned<byte[]>>> map = new HashMap<ByteArray, List<Versioned<byte[]>>>();
                     map.put(key, values);
 
-                    Response<Iterable<ByteArray>, Map<ByteArray, List<Versioned<byte[]>>>> response = Response.create(node,
-                                                                                                                      (Iterable<ByteArray>) Arrays.asList(key),
-                                                                                                                      map,
-                                                                                                                      ((System.nanoTime() - start) / Time.NS_PER_MS));
+                    Response<Iterable<ByteArray>, Map<ByteArray, List<Versioned<byte[]>>>> response = new Response<Iterable<ByteArray>, Map<ByteArray, List<Versioned<byte[]>>>>(node,
+                                                                                                                                                                                 Arrays.asList(key),
+                                                                                                                                                                                 map,
+                                                                                                                                                                                 ((System.nanoTime() - start) / Time.NS_PER_MS));
 
                     successCount.increment();
                     pipelineData.getResponses().add(response);

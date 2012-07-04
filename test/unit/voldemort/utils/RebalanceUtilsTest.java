@@ -24,8 +24,6 @@ import voldemort.ServerTestUtils;
 import voldemort.cluster.Cluster;
 import voldemort.cluster.Node;
 
-import com.google.common.base.Predicate;
-import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
 
 public class RebalanceUtilsTest extends TestCase {

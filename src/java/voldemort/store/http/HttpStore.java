@@ -208,5 +208,4 @@ public class HttpStore implements Store<ByteArray, byte[], byte[]> {
                 method.releaseConnection();
         }
     }
-
 }
