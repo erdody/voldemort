@@ -103,12 +103,7 @@ public class BdbStorageConfiguration implements StorageConfiguration {
                                          Boolean.toString(config.getBdbCheckpointerHighPriority()));
         environmentConfig.setConfigParam(EnvironmentConfig.CLEANER_MAX_BATCH_FILES,
                                          Integer.toString(config.getBdbCleanerMaxBatchFiles()));
-
         environmentConfig.setCacheMode(CacheMode.EVICT_LN);
-
-        // environmentConfig.setConfigParam(EnvironmentConfig.CONSOLE_LOGGING_LEVEL,
-        // "FINEST");
-        // java.util.logging.Logger.getLogger("").setLevel(Level.FINEST);
 
         environmentConfig.setLockTimeout(config.getBdbLockTimeoutMs(), TimeUnit.MILLISECONDS);
         databaseConfig = new DatabaseConfig();
