@@ -79,7 +79,7 @@ public class InMemoryStorageEngineSI extends InMemoryStorageEngine<ByteArray, by
                                                                    new Function<Version, Boolean>() {
 
                                                                        public Boolean apply(Version version) {
-                                                                           return condition.evaluate(secIdxProcessor.parseSecValues(secIdxValues.get(Pair.create(entry.getKey(),
+                                                                           return condition.evaluate(secIdxProcessor.parseSecondaryValues(secIdxValues.get(Pair.create(entry.getKey(),
                                                                                                                                                                  version))));
                                                                        }
 
@@ -95,7 +95,7 @@ public class InMemoryStorageEngineSI extends InMemoryStorageEngine<ByteArray, by
     @Override
     public ClosableIterator<KeyMatch<ByteArray>> keys(String query) {
         final Expression condition = ExpressionParser.parse(query,
-                                                            secIdxProcessor.getQueryFieldDefinitions());
+                                                            secIdxProcessor.getSecondaryFields());
 
         final Iterator<Entry<ByteArray, List<Versioned<byte[]>>>> iterator = map.entrySet()
                                                                                 .iterator();

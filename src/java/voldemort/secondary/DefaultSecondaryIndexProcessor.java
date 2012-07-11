@@ -7,7 +7,6 @@ import java.util.Map.Entry;
 import surver.pub.expression.FieldDefinition;
 import voldemort.serialization.Serializer;
 
-import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 
 /**
@@ -46,27 +45,22 @@ public class DefaultSecondaryIndexProcessor implements SecondaryIndexProcessor {
 
         Map<String, Object> values = Maps.newHashMap();
         for(Entry<String, SecondaryIndexValueExtractor<?, ?>> entry: secIdxExtractors.entrySet()) {
+            @SuppressWarnings("unchecked")
+            SecondaryIndexValueExtractor<Object, Object> genExtractor = (SecondaryIndexValueExtractor<Object, Object>) entry.getValue();
+
             String fieldName = entry.getKey();
-            values.put(fieldName, extract(entry.getValue(), obj));
+            values.put(fieldName, genExtractor.extractValue(obj));
         }
         return secIdxSerializer.toBytes(values);
     }
 
-    @SuppressWarnings("unchecked")
-    private Object extract(SecondaryIndexValueExtractor<?, ?> extractor, Object obj) {
-        return ((SecondaryIndexValueExtractor<Object, Object>) extractor).extractValue(obj);
+    public Map<String, Object> parseSecondaryValues(byte[] values) {
+        @SuppressWarnings("unchecked")
+        Map<String, Object> result = (Map<String, Object>) secIdxSerializer.toObject(values);
+        return result;
     }
 
-    public List<String> getSecondaryFields() {
-        return Lists.newArrayList(secIdxExtractors.keySet());
-    }
-
-    @SuppressWarnings("unchecked")
-    public Map<String, Object> parseSecValues(byte[] values) {
-        return (Map<String, Object>) secIdxSerializer.toObject(values);
-    }
-
-    public List<FieldDefinition> getQueryFieldDefinitions() {
+    public List<FieldDefinition> getSecondaryFields() {
         return queryFieldDefinitions;
     }
 

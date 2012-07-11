@@ -62,6 +62,17 @@ import com.sleepycat.je.Transaction;
 /**
  * A store that uses BDB for persistence
  * 
+ * <p>
+ * This implementation is intended for bdb-je versions 5+, where the log format
+ * was changed and now databases with duplicate support consume much more
+ * memory, because internally it generates a composite key with key + value.
+ * This makes it impossible to hold all IN nodes in memory, which is a
+ * requirement for optimum performance.
+ * <p>
+ * The idea is mainly to create a composite key with key + version, to make keys
+ * unique. A custom comparator is provided to BDB, which checks the original key
+ * first and in case of equality it uses the version to untie. Tree is still
+ * ordered by original key.
  * 
  */
 public class BdbStorageEngine implements StorageEngine<ByteArray, byte[], byte[]> {

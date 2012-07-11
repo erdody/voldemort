@@ -101,28 +101,31 @@ public class ViewStorageEngineTest extends TestCase {
         target2.put(100, Versioned.value(Arrays.asList(values2)), null);
     }
 
-    private Store<String, String, String> getEngine1(View<?, ?, ?, ?> valTrans, boolean compress) {
-        return SerializingStore.wrap(new ViewStorageEngine("test",
-                                                           targetRaw1,
-                                                           STR_SER,
-                                                           STR_SER,
-                                                           STR_SER,
-                                                           compressingSerializer(STR_SER, compress),
-                                                           valTrans),
+    private Store<String, String, String> getEngine1(View<String, String, String, String> valTrans,
+                                                     boolean compress) {
+        return SerializingStore.wrap(new ViewStorageEngine<String, String, String, String>("test",
+                                                                                           targetRaw1,
+                                                                                           STR_SER,
+                                                                                           STR_SER,
+                                                                                           STR_SER,
+                                                                                           compressingSerializer(STR_SER,
+                                                                                                                 compress),
+                                                                                           valTrans),
                                      STR_SER,
                                      STR_SER,
                                      STR_SER);
     }
 
-    private Store<Integer, List<Integer>, List<Integer>> getEngine2(View<?, ?, ?, ?> view,
+    private Store<Integer, List<Integer>, List<Integer>> getEngine2(View<Integer, List<Integer>, List<Integer>, List<Integer>> view,
                                                                     boolean compress) {
-        return SerializingStore.wrap(new ViewStorageEngine("transTest",
-                                                           targetRaw2,
-                                                           valueSer,
-                                                           transSer,
-                                                           keySer,
-                                                           compressingSerializer(valueSer, compress),
-                                                           view),
+        return SerializingStore.wrap(new ViewStorageEngine<Integer, List<Integer>, List<Integer>, List<Integer>>("transTest",
+                                                                                                                 targetRaw2,
+                                                                                                                 valueSer,
+                                                                                                                 transSer,
+                                                                                                                 keySer,
+                                                                                                                 compressingSerializer(valueSer,
+                                                                                                                                       compress),
+                                                                                                                 view),
                                      keySer,
                                      valueSer,
                                      transSer);

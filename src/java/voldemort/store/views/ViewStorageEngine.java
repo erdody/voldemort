@@ -27,36 +27,35 @@ import com.google.common.collect.Lists;
  * 
  */
 @Experimental
-public class ViewStorageEngine implements StorageEngine<ByteArray, byte[], byte[]> {
+public class ViewStorageEngine<K, V, S, T> implements StorageEngine<ByteArray, byte[], byte[]> {
 
     private final String name;
-    private final Store<Object, Object, Object> serializingStore;
+    private final Store<K, S, T> serializingStore;
     private final StorageEngine<ByteArray, byte[], byte[]> target;
-    private final Serializer<Object> valSerializer;
-    private final Serializer<Object> transformSerializer;
-    private final Serializer<Object> targetKeySerializer;
-    private final Serializer<Object> targetValSerializer;
-    private final View<Object, Object, Object, Object> view;
+    private final Serializer<V> valSerializer;
+    private final Serializer<T> transformSerializer;
+    private final Serializer<K> targetKeySerializer;
+    private final Serializer<S> targetValSerializer;
+    private final View<K, V, S, T> view;
 
-    @SuppressWarnings("unchecked")
     public ViewStorageEngine(String name,
                              StorageEngine<ByteArray, byte[], byte[]> target,
-                             Serializer<?> valSerializer,
-                             Serializer<?> transformSerializer,
-                             Serializer<?> targetKeySerializer,
-                             Serializer<?> targetValSerializer,
-                             View<?, ?, ?, ?> valueTrans) {
+                             Serializer<V> valSerializer,
+                             Serializer<T> transformSerializer,
+                             Serializer<K> targetKeySerializer,
+                             Serializer<S> targetValSerializer,
+                             View<K, V, S, T> valueTrans) {
         this.name = name;
         this.target = Utils.notNull(target);
-        this.serializingStore = new SerializingStore(target,
-                                                     targetKeySerializer,
-                                                     targetValSerializer,
-                                                     null);
-        this.valSerializer = (Serializer<Object>) valSerializer;
-        this.transformSerializer = (Serializer<Object>) transformSerializer;
-        this.targetKeySerializer = (Serializer<Object>) targetKeySerializer;
-        this.targetValSerializer = (Serializer<Object>) targetValSerializer;
-        this.view = (View<Object, Object, Object, Object>) valueTrans;
+        this.serializingStore = new SerializingStore<K, S, T>(target,
+                                                              targetKeySerializer,
+                                                              targetValSerializer,
+                                                              null);
+        this.valSerializer = valSerializer;
+        this.transformSerializer = transformSerializer;
+        this.targetKeySerializer = targetKeySerializer;
+        this.targetValSerializer = targetValSerializer;
+        this.view = valueTrans;
         if(valueTrans == null)
             throw new IllegalArgumentException("View without either a key transformation or a value transformation.");
     }

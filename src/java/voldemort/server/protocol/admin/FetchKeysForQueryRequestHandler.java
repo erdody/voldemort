@@ -15,37 +15,31 @@ import voldemort.server.protocol.StreamRequestHandler;
 import voldemort.store.ErrorCodeMapper;
 import voldemort.store.StorageEngine;
 import voldemort.store.StorageEngine.KeyMatch;
-import voldemort.store.StoreDefinition;
 import voldemort.utils.ByteArray;
 import voldemort.utils.ClosableIterator;
 
-import com.google.protobuf.Message;
-
+/**
+ * Request Handler for secondary queries (key iterator based on a query).
+ * <p>
+ * For now we only transfer the matching keys, but if we want to implement a
+ * multi-node query we would need to send the complete set of versions for each
+ * key. See {@link #handleRequest(DataInputStream, DataOutputStream)}
+ */
 public class FetchKeysForQueryRequestHandler implements StreamRequestHandler {
 
-    protected final Logger logger = Logger.getLogger(getClass());
+    private final Logger logger = Logger.getLogger(getClass());
 
     private final FetchKeysForQueryRequest request;
 
-    protected final ErrorCodeMapper errorCodeMapper;
+    private final ErrorCodeMapper errorCodeMapper;
 
-    protected final StorageEngine<ByteArray, byte[], byte[]> storageEngine;
+    private final StorageEngine<ByteArray, byte[], byte[]> storageEngine;
 
-    protected final ClosableIterator<KeyMatch<ByteArray>> keyMatchIterator;
+    private final ClosableIterator<KeyMatch<ByteArray>> keyMatchIterator;
 
-    protected long counter;
+    private final long startMillis;
 
-    protected final long startTime;
-
-    // protected final Handle handle;
-
-    // protected final EventThrottler throttler;
-
-    // protected final StreamStats stats;
-
-    protected int nodeId;
-
-    protected StoreDefinition storeDef;
+    private long counter;
 
     public FetchKeysForQueryRequestHandler(FetchKeysForQueryRequest request,
                                            StoreRepository storeRepository,
@@ -54,7 +48,7 @@ public class FetchKeysForQueryRequestHandler implements StreamRequestHandler {
         this.storageEngine = AdminServiceRequestHandler.getStorageEngine(storeRepository,
                                                                          request.getStore());
         this.keyMatchIterator = storageEngine.keys(request.getQuery());
-        this.startTime = System.currentTimeMillis();
+        this.startMillis = System.currentTimeMillis();
         this.errorCodeMapper = errorCodeMapper;
     }
 
@@ -65,7 +59,7 @@ public class FetchKeysForQueryRequestHandler implements StreamRequestHandler {
     public final void close(DataOutputStream outputStream) throws IOException {
         logger.info("Successfully returned " + counter + " keys for store '"
                     + storageEngine.getName() + "' in "
-                    + ((System.currentTimeMillis() - startTime) / 1000) + " s");
+                    + ((System.currentTimeMillis() - startMillis) / 1000) + " s");
 
         if(keyMatchIterator != null)
             keyMatchIterator.close();
@@ -91,41 +85,24 @@ public class FetchKeysForQueryRequestHandler implements StreamRequestHandler {
         if(!keyMatchIterator.hasNext())
             return StreamRequestHandlerState.COMPLETE;
 
-        // long startNs = System.nanoTime();
         KeyMatch<ByteArray> keyMatch = keyMatchIterator.next();
-        // stats.recordDiskTime(handle, System.nanoTime() - startNs);
-
-        // throttler.maybeThrottle(key.length());
 
         {
             VAdminProto.FetchKeysForQueryResponse.Builder response = VAdminProto.FetchKeysForQueryResponse.newBuilder();
-
-            // TODO encode the COMPLETE match
             response.setKey(ProtoUtils.encodeBytes(keyMatch.getKey()));
-
-            // handle.incrementEntriesScanned();
-            Message message = response.build();
-
-            // startNs = System.nanoTime();
-            ProtoUtils.writeMessage(outputStream, message);
-            // stats.recordNetworkTime(handle, System.nanoTime() - startNs);
+            ProtoUtils.writeMessage(outputStream, response.build());
         }
 
         // log progress
         counter++;
-
-        if(0 == counter % 100000) {
-            long totalTime = (System.currentTimeMillis() - startTime) / 1000;
+        if(counter % 100000 == 0) {
+            long totalTime = (System.currentTimeMillis() - startMillis) / 1000;
 
             logger.info("Fetch keys for query returned " + counter + " keys for store '"
                         + storageEngine.getName() + " in " + totalTime + " s");
         }
 
-        if(keyMatchIterator.hasNext())
-            return StreamRequestHandlerState.WRITING;
-        else {
-            // stats.closeHandle(handle);
-            return StreamRequestHandlerState.COMPLETE;
-        }
+        return keyMatchIterator.hasNext() ? StreamRequestHandlerState.WRITING
+                                         : StreamRequestHandlerState.COMPLETE;
     }
 }

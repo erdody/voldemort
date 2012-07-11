@@ -59,7 +59,7 @@ public class BdbStorageEngineSI extends BdbStorageEngine {
 
         public BdbFilteredKeysIterator(ForwardCursor cursor, String query) {
             super(cursor, true);
-            condition = ExpressionParser.parse(query, secIdxProcessor.getQueryFieldDefinitions());
+            condition = ExpressionParser.parse(query, secIdxProcessor.getSecondaryFields());
         }
 
         private byte[] lastKey = null;
@@ -145,7 +145,7 @@ public class BdbStorageEngineSI extends BdbStorageEngine {
 
         private boolean match(byte[] vKey) {
             byte[] secIdxValues = SIVersionedKeyHandler.getSecIdxBytes(vKey);
-            return condition.evaluate(secIdxProcessor.parseSecValues(secIdxValues));
+            return condition.evaluate(secIdxProcessor.parseSecondaryValues(secIdxValues));
         }
 
     }

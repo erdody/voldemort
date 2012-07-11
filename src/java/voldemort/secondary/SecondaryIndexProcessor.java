@@ -6,18 +6,26 @@ import java.util.Map;
 import surver.pub.expression.FieldDefinition;
 
 /**
- * Class responsible for extracting and serializing secondary field values
+ * Class responsible for extracting and serializing secondary field values.
  */
 public interface SecondaryIndexProcessor {
 
-    /** Based on the main value, extract all secondary field values */
+    /**
+     * Based on the main value, extract all secondary field values
+     * 
+     * @return block with serialized secondary values
+     */
     byte[] extractSecondaryValues(byte[] value);
 
-    /** @return list of secondary field names */
-    List<String> getSecondaryFields();
+    /**
+     * Convert serialized secondary values to their respective Object
+     * representation
+     * 
+     * @return secondary values, indexed by field name
+     */
+    Map<String, Object> parseSecondaryValues(byte[] values);
 
-    Map<String, Object> parseSecValues(byte[] values);
-
-    List<FieldDefinition> getQueryFieldDefinitions();
+    /** @return List of fields available for secondary queries */
+    List<FieldDefinition> getSecondaryFields();
 
 }
