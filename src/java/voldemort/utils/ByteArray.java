@@ -55,12 +55,15 @@ public final class ByteArray implements Serializable, Comparable<ByteArray> {
         return compare(key1, 0, key1.length, key2, 0, key2.length);
     }
 
+    /**
+     * Compare the segments defined for both byte arrays.
+     */
     public static int compare(byte[] key1,
-                               int offset1,
-                               int a1Len,
-                               byte[] key2,
-                               int offset2,
-                               int a2Len) {
+                              int offset1,
+                              int a1Len,
+                              byte[] key2,
+                              int offset2,
+                              int a2Len) {
         int limit = Math.min(a1Len, a2Len);
         for(int i = 0; i < limit; i++) {
             byte b1 = key1[offset1 + i];

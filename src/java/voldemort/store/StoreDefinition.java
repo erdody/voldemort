@@ -284,6 +284,12 @@ public class StoreDefinition implements Serializable {
         return this.retentionCondition != null;
     }
 
+    /**
+     * Used for {@link StorageEngine}s with secondary index support.
+     * <p>
+     * If this condition is set, it will be used to identify which entries can
+     * be removed on each cycle (instead of using the Version timestamp).
+     */
     public String getRetentionCondition() {
         return this.retentionCondition;
     }

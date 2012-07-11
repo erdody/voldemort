@@ -98,6 +98,14 @@ public interface StorageEngine<K, V, T> extends Store<K, V, T> {
      */
     public ClosableIterator<KeyMatch<K>> keys(String query);
 
+    /**
+     * A match for a secondary index query. This match contains the key that
+     * matched and the list of Versions that matched the given query (always
+     * non-empty) and the list of Versions that didn't match.
+     * <p>
+     * We need to have both lists because inconsistency resolution (check what
+     * version is the latest one) is done at the client side.
+     */
     public class KeyMatch<K> {
 
         private final K key;
@@ -114,14 +122,17 @@ public interface StorageEngine<K, V, T> extends Store<K, V, T> {
             this.unmatchingVersions = unmatchingVersions;
         }
 
+        /** @return key that has at least one match */
         public K getKey() {
             return key;
         }
 
+        /** @return list of versions of this key that matched */
         public List<? extends Version> getMatchingVersions() {
             return matchingVersions;
         }
 
+        /** @return list of versions of this key that didn't match */
         public List<? extends Version> getUnmatchingVersions() {
             return unmatchingVersions;
         }

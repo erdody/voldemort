@@ -13,7 +13,6 @@ import voldemort.store.StoreCapabilityType;
 import voldemort.utils.ByteArray;
 import voldemort.utils.ByteUtils;
 import voldemort.utils.ClosableIterator;
-import voldemort.versioning.VectorClock;
 import voldemort.versioning.Version;
 import voldemort.versioning.Versioned;
 
@@ -53,6 +52,11 @@ public class BdbStorageEngineSI extends BdbStorageEngine {
         return new BdbFilteredKeysIterator(cursor, query);
     }
 
+    /**
+     * Iterator that uses a query to decide which keys should be returned.
+     * <p>
+     * Since there could be many versions for a given key, and
+     */
     private class BdbFilteredKeysIterator extends BdbIterator<KeyMatch<ByteArray>> {
 
         private Expression condition;
@@ -89,7 +93,8 @@ public class BdbStorageEngineSI extends BdbStorageEngine {
             do {
                 lastStatus = cursor.getNext(key, value, LockMode.READ_UNCOMMITTED);
                 if(lastStatus == OperationStatus.SUCCESS) {
-                    boolean multipleVersions = keyHandler.compareKeyOnly(lastKey, key.getData()) == 0;
+                    boolean multipleVersions = keyHandler.compareOriginalKeyOnly(lastKey,
+                                                                                 key.getData()) == 0;
 
                     if(multipleVersions) {
                         ListMultimap<Boolean, byte[]> partitioned = ArrayListMultimap.create();
@@ -101,11 +106,11 @@ public class BdbStorageEngineSI extends BdbStorageEngine {
                             partitioned.put(match(lastKey), lastKey);
                             lastStatus = cursor.getNext(key, value, LockMode.READ_UNCOMMITTED);
                         } while(lastStatus == OperationStatus.SUCCESS
-                                && keyHandler.compareKeyOnly(lastKey, key.getData()) == 0);
+                                && keyHandler.compareOriginalKeyOnly(lastKey, key.getData()) == 0);
 
                         // if any version match
                         if(!partitioned.get(true).isEmpty()) {
-                            currentMatch = new KeyMatch<ByteArray>(new ByteArray(keyHandler.getRawKey(lastKey)),
+                            currentMatch = new KeyMatch<ByteArray>(new ByteArray(keyHandler.getOriginalKey(lastKey)),
                                                                    toVersion(partitioned.get(true)),
                                                                    toVersion(partitioned.get(false)));
                         }
@@ -137,14 +142,14 @@ public class BdbStorageEngineSI extends BdbStorageEngine {
 
         private void processSingleVersion() {
             if(match(lastKey)) {
-                currentMatch = new KeyMatch<ByteArray>(new ByteArray(keyHandler.getRawKey(lastKey)),
+                currentMatch = new KeyMatch<ByteArray>(new ByteArray(keyHandler.getOriginalKey(lastKey)),
                                                        Collections.<Version> singletonList(VersionedKeyHandler.getVectorClock(lastKey)),
                                                        Collections.<Version> emptyList());
             }
         }
 
-        private boolean match(byte[] vKey) {
-            byte[] secIdxValues = SIVersionedKeyHandler.getSecIdxBytes(vKey);
+        private boolean match(byte[] cKey) {
+            byte[] secIdxValues = getSIKeyHandler().getSecIdxBytes(cKey);
             return condition.evaluate(secIdxProcessor.parseSecondaryValues(secIdxValues));
         }
 
@@ -161,10 +166,18 @@ public class BdbStorageEngineSI extends BdbStorageEngine {
     }
 
     @Override
-    public VersionedKeyHandler getKeyHandler() {
+    protected SIVersionedKeyHandler createKeyHandler() {
         return new SIVersionedKeyHandler();
     }
 
+    private SIVersionedKeyHandler getSIKeyHandler() {
+        return (SIVersionedKeyHandler) keyHandler;
+    }
+
+    /**
+     * Composite key handler that appends secondary index values to the payload
+     * segment.
+     */
     public static class SIVersionedKeyHandler extends VersionedKeyHandler {
 
         private static final byte[] EMPTY = serializeSize((short) 0);
@@ -175,31 +188,33 @@ public class BdbStorageEngineSI extends BdbStorageEngine {
         }
 
         @Override
-        protected int getPayloadSize(byte[] vKey) {
-            int superSize = super.getPayloadSize(vKey);
-            return ByteBuffer.wrap(vKey, superSize, 2).getShort() + 2 + superSize;
+        protected int getPayloadSize(byte[] cKey) {
+            int superSize = super.getPayloadSize(cKey);
+            return ByteBuffer.wrap(cKey, superSize, 2).getShort() + 2 + superSize;
         }
 
+        /** Converts the given size into a byte array */
         private static byte[] serializeSize(short size) {
             return ByteBuffer.allocate(2).putShort(size).array();
         }
 
-        static byte[] getSecIdxBytes(byte[] vKey) {
-            // TODO clean up, use VersionedKeyHandler
-            int superSize = VectorClock.getSize(vKey, 0);
-            int secIdxSize = ByteBuffer.wrap(vKey, superSize, 2).getShort();
+        /**
+         * @return serialized secondary index values block from the given
+         *         composite key
+         */
+        public byte[] getSecIdxBytes(byte[] cKey) {
+            int superSize = super.getPayloadSize(cKey);
+            int secIdxSize = ByteBuffer.wrap(cKey, superSize, 2).getShort();
             int secIdxPos = superSize + 2;
-
-            return ByteUtils.copy(vKey, secIdxPos, secIdxPos + secIdxSize);
+            return ByteUtils.copy(cKey, secIdxPos, secIdxPos + secIdxSize);
         }
     }
 
     @Override
     protected byte[] assembleKeyPayload(ByteArray key, Versioned<byte[]> value) {
         byte[] secIdxBlock = secIdxProcessor.extractSecondaryValues(value.getValue());
-        short secIdxBlockLength = (short) secIdxBlock.length;
         return ByteUtils.cat(super.assembleKeyPayload(key, value),
-                             SIVersionedKeyHandler.serializeSize(secIdxBlockLength),
+                             SIVersionedKeyHandler.serializeSize((short) secIdxBlock.length),
                              secIdxBlock);
     }
 

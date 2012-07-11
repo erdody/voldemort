@@ -88,7 +88,7 @@ public class BdbStorageEngine implements StorageEngine<ByteArray, byte[], byte[]
     private final BdbEnvironmentStats bdbEnvironmentStats;
     private final AtomicBoolean isTruncating = new AtomicBoolean(false);
 
-    protected final VersionedKeyHandler keyHandler = getKeyHandler();
+    protected final VersionedKeyHandler keyHandler = createKeyHandler();
 
     public BdbStorageEngine(String name,
                             Environment environment,
@@ -275,7 +275,7 @@ public class BdbStorageEngine implements StorageEngine<ByteArray, byte[], byte[]
         }
 
         public Versioned<byte[]> extract(DatabaseEntry keyEntry, DatabaseEntry valueEntry) {
-            return VersionedKeyHandler.toObject(valueEntry.getData(), keyEntry.getData());
+            return VersionedKeyHandler.toVersionedValue(valueEntry.getData(), keyEntry.getData());
         }
     };
 
@@ -296,14 +296,14 @@ public class BdbStorageEngine implements StorageEngine<ByteArray, byte[], byte[]
                             EntryValueExtractor<X> extractor) throws DatabaseException {
         StoreUtils.assertValidKey(key);
 
-        DatabaseEntry keyEntry = new DatabaseEntry(keyHandler.getInitialKey(key.get()));
+        DatabaseEntry keyEntry = new DatabaseEntry(keyHandler.getKeyWithEmptyPayload(key.get()));
         DatabaseEntry valueEntry = extractor.processValues() ? new DatabaseEntry() : PARTIAL_ENTRY;
         List<X> results = Lists.newArrayList();
         for(OperationStatus status = cursor.getSearchKeyRange(keyEntry, valueEntry, lockMode); status == OperationStatus.SUCCESS
-                                                                                               && keyHandler.matchesRawKey(keyEntry.getData(),
-                                                                                                                           key.get()); status = cursor.getNext(keyEntry,
-                                                                                                                                                               valueEntry,
-                                                                                                                                                               lockMode)) {
+                                                                                               && keyHandler.matchesOriginalKey(keyEntry.getData(),
+                                                                                                                                key.get()); status = cursor.getNext(keyEntry,
+                                                                                                                                                                    valueEntry,
+                                                                                                                                                                    lockMode)) {
             results.add(extractor.extract(keyEntry, valueEntry));
         }
         return results;
@@ -313,7 +313,7 @@ public class BdbStorageEngine implements StorageEngine<ByteArray, byte[], byte[]
             throws PersistenceFailureException {
         StoreUtils.assertValidKey(key);
 
-        DatabaseEntry keyEntry = new DatabaseEntry(keyHandler.getInitialKey(key.get()));
+        DatabaseEntry keyEntry = new DatabaseEntry(keyHandler.getKeyWithEmptyPayload(key.get()));
         boolean succeeded = false;
         Transaction transaction = null;
         Cursor cursor = null;
@@ -328,10 +328,10 @@ public class BdbStorageEngine implements StorageEngine<ByteArray, byte[], byte[]
             for(OperationStatus status = cursor.getSearchKeyRange(keyEntry,
                                                                   PARTIAL_ENTRY,
                                                                   LockMode.RMW); status == OperationStatus.SUCCESS
-                                                                                 && keyHandler.matchesRawKey(keyEntry.getData(),
-                                                                                                             key.get()); status = cursor.getNext(keyEntry,
-                                                                                                                                                 PARTIAL_ENTRY,
-                                                                                                                                                 LockMode.RMW)) {
+                                                                                 && keyHandler.matchesOriginalKey(keyEntry.getData(),
+                                                                                                                  key.get()); status = cursor.getNext(keyEntry,
+                                                                                                                                                      PARTIAL_ENTRY,
+                                                                                                                                                      LockMode.RMW)) {
 
                 VectorClock clock = new VectorClock(keyEntry.getData());
                 Occurred occurred = value.getVersion().compare(clock);
@@ -382,7 +382,7 @@ public class BdbStorageEngine implements StorageEngine<ByteArray, byte[], byte[]
         Transaction transaction = null;
         try {
             transaction = this.environment.beginTransaction(null, null);
-            DatabaseEntry keyEntry = new DatabaseEntry(keyHandler.getInitialKey(key.get()));
+            DatabaseEntry keyEntry = new DatabaseEntry(keyHandler.getKeyWithEmptyPayload(key.get()));
             cursor = getBdbDatabase().openCursor(transaction, null);
 
             boolean deleted = false;
@@ -390,10 +390,10 @@ public class BdbStorageEngine implements StorageEngine<ByteArray, byte[], byte[]
             for(OperationStatus status = cursor.getSearchKeyRange(keyEntry,
                                                                   PARTIAL_ENTRY,
                                                                   LockMode.READ_UNCOMMITTED); status == OperationStatus.SUCCESS
-                                                                                              && keyHandler.matchesRawKey(keyEntry.getData(),
-                                                                                                                          key.get()); status = cursor.getNext(keyEntry,
-                                                                                                                                                              PARTIAL_ENTRY,
-                                                                                                                                                              LockMode.READ_UNCOMMITTED)) {
+                                                                                              && keyHandler.matchesOriginalKey(keyEntry.getData(),
+                                                                                                                               key.get()); status = cursor.getNext(keyEntry,
+                                                                                                                                                                   PARTIAL_ENTRY,
+                                                                                                                                                                   LockMode.READ_UNCOMMITTED)) {
 
                 // if version is null no comparison is necessary
                 if(new VectorClock(keyEntry.getData()).compare(version) == Occurred.BEFORE) {
@@ -601,7 +601,7 @@ public class BdbStorageEngine implements StorageEngine<ByteArray, byte[], byte[]
 
         @Override
         protected ByteArray get(DatabaseEntry key, DatabaseEntry value) {
-            return new ByteArray(keyHandler.getRawKey(key.getData()));
+            return new ByteArray(keyHandler.getOriginalKey(key.getData()));
         }
 
     }
@@ -614,9 +614,9 @@ public class BdbStorageEngine implements StorageEngine<ByteArray, byte[], byte[]
 
         @Override
         protected Pair<ByteArray, Versioned<byte[]>> get(DatabaseEntry key, DatabaseEntry value) {
-            byte[] keyBytes = keyHandler.getRawKey(key.getData());
+            byte[] keyBytes = keyHandler.getOriginalKey(key.getData());
             return Pair.create(new ByteArray(keyBytes),
-                               VersionedKeyHandler.toObject(value.getData(), key.getData()));
+                               VersionedKeyHandler.toVersionedValue(value.getData(), key.getData()));
         }
 
     }
@@ -629,82 +629,123 @@ public class BdbStorageEngine implements StorageEngine<ByteArray, byte[], byte[]
         throw new UnsupportedOperationException("No secondary index support.");
     }
 
-    public VersionedKeyHandler getKeyHandler() {
+    protected VersionedKeyHandler createKeyHandler() {
         return new VersionedKeyHandler();
     }
 
+    /**
+     * Class in charge of understanding a composite key.
+     * <p>
+     * It prepends a VectorClock object (with a size byte) to the original key.
+     * The idea is that this class can be extended to add more information
+     * (besides the version) to the "payload" initial segment (e.g. secondary
+     * values)
+     */
     public static class VersionedKeyHandler implements Comparator<byte[]> {
 
+        /**
+         * @return size for the initial payload segment in the composite key.
+         *         After this much bytes, we will have the original key.
+         */
+        protected int getPayloadSize(byte[] cKey) {
+            return VectorClock.getSize(cKey, 0);
+        }
+
+        /**
+         * Compares original key first and uses payload (binary format) to break
+         * ties.
+         */
+        public int compare(byte[] cKey1, byte[] cKey2) {
+            int cSize1 = getPayloadSize(cKey1);
+            int cSize2 = getPayloadSize(cKey2);
+            int result = ByteArray.compare(cKey1,
+                                           cSize1,
+                                           cKey1.length - cSize1,
+                                           cKey2,
+                                           cSize2,
+                                           cKey2.length - cSize2);
+            return result != 0 ? result : ByteArray.compare(cKey1, 0, cSize1, cKey2, 0, cSize2);
+        }
+
+        /**
+         * Compares original key only, regardless of the payload.
+         */
+        public int compareOriginalKeyOnly(byte[] cKey1, byte[] cKey2) {
+            int cSize1 = getPayloadSize(cKey1);
+            int cSize2 = getPayloadSize(cKey2);
+            return ByteArray.compare(cKey1,
+                                     cSize1,
+                                     cKey1.length - cSize1,
+                                     cKey2,
+                                     cSize2,
+                                     cKey2.length - cSize2);
+        }
+
+        /**
+         * @return true if the original key in the given composite key matches
+         *         the given one.
+         */
+        public boolean matchesOriginalKey(byte[] cKey, byte[] key) {
+            int vSize = getPayloadSize(cKey);
+            return (cKey.length - vSize == key.length)
+                   && ByteArray.compare(cKey, vSize, key.length, key, 0, key.length) == 0;
+        }
+
+        /** @return original key stored in the given composite key */
+        public byte[] getOriginalKey(byte[] cKey) {
+            return ByteUtils.copy(cKey, getPayloadSize(cKey), cKey.length);
+        }
+
+        /**
+         * @return a payload with no content. It should be the smallest
+         *         possible.
+         */
         protected byte[] getEmptyPayload() {
+            // this is the smallest VectorClock we can have
             return new byte[11];
         }
 
-        protected int getPayloadSize(byte[] vKey) {
-            return VectorClock.getSize(vKey, 0);
+        /**
+         * Creates a composite key for the given original key with a payload
+         * that will be the "smallest". Typically used to use as the beginning
+         * in a range query.
+         */
+        public byte[] getKeyWithEmptyPayload(byte[] key) {
+            return ByteUtils.cat(getEmptyPayload(), key);
         }
 
-        public int compare(byte[] vKey1, byte[] vKey2) {
-            int vSize1 = getPayloadSize(vKey1);
-            int vSize2 = getPayloadSize(vKey2);
-            int result = ByteArray.compare(vKey1,
-                                           vSize1,
-                                           vKey1.length - vSize1,
-                                           vKey2,
-                                           vSize2,
-                                           vKey2.length - vSize2);
-            return result != 0 ? result : ByteArray.compare(vKey1, 0, vSize1, vKey2, 0, vSize2);
-        }
-
-        public int compareKeyOnly(byte[] vKey1, byte[] vKey2) {
-            int vSize1 = getPayloadSize(vKey1);
-            int vSize2 = getPayloadSize(vKey2);
-            return ByteArray.compare(vKey1,
-                                     vSize1,
-                                     vKey1.length - vSize1,
-                                     vKey2,
-                                     vSize2,
-                                     vKey2.length - vSize2);
-        }
-
-        public boolean matchesRawKey(byte[] vKey, byte[] key) {
-            int vSize = getPayloadSize(vKey);
-            return (vKey.length - vSize == key.length)
-                   && ByteArray.compare(vKey, vSize, key.length, key, 0, key.length) == 0;
-        }
-
-        public byte[] getRawKey(byte[] vKey) {
-            int payloadSize = getPayloadSize(vKey);
-            return ByteUtils.copy(vKey, payloadSize, vKey.length);
-        }
-
-        public byte[] getInitialKey(byte[] key) {
-            byte[] emptyPayload = getEmptyPayload();
-            return ByteUtils.cat(emptyPayload, key);
-        }
-
-        public static VectorClock getVectorClock(byte[] vKey) {
-            if(vKey[0] >= 0)
-                return new VectorClock(vKey);
+        /** Extracts the {@link VectorClock} from a composite key */
+        protected static VectorClock getVectorClock(byte[] cKey) {
+            if(cKey[0] >= 0)
+                return new VectorClock(cKey);
             return null;
         }
 
-        public static Versioned<byte[]> toObject(byte[] value, byte[] vKey) {
-            return new Versioned<byte[]>(value, getVectorClock(vKey));
+        /**
+         * Creates a {@link Versioned} value, from a given composite key
+         */
+        public static Versioned<byte[]> toVersionedValue(byte[] value, byte[] cKey) {
+            return new Versioned<byte[]>(value, getVectorClock(cKey));
+        }
+
+        private static byte[] toBytes(Version version) {
+            byte[] versionBytes = null;
+            if(version == null)
+                versionBytes = new byte[] { -1 };
+            else
+                versionBytes = ((VectorClock) version).toBytes();
+            return versionBytes;
         }
 
     }
 
-    private static byte[] toBytes(Version version) {
-        byte[] versionBytes = null;
-        if(version == null)
-            versionBytes = new byte[] { -1 };
-        else
-            versionBytes = ((VectorClock) version).toBytes();
-        return versionBytes;
-    }
-
-    protected byte[] assembleKeyPayload(ByteArray key, Versioned<byte[]> value) {
-        return toBytes(value.getVersion());
+    /**
+     * Generate bytes that will be prepended to the original key to create the
+     * composite key that will be actually stored.
+     */
+    protected byte[] assembleKeyPayload(@SuppressWarnings("unused") ByteArray key,
+                                        Versioned<byte[]> value) {
+        return VersionedKeyHandler.toBytes(value.getVersion());
     }
 
     private byte[] serializeKey(ByteArray key, Versioned<byte[]> value) {
