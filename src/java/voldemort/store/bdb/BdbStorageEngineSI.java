@@ -55,11 +55,14 @@ public class BdbStorageEngineSI extends BdbStorageEngine {
     /**
      * Iterator that uses a query to decide which keys should be returned.
      * <p>
-     * Since there could be many versions for a given key, and
+     * Since there could be many versions for a given key, and conflict
+     * resolution is performed at the client side, for any key that has at least
+     * a version that matches we return all the versions separated by
+     * matching/not-matching.
      */
     private class BdbFilteredKeysIterator extends BdbIterator<KeyMatch<ByteArray>> {
 
-        private Expression condition;
+        private final Expression condition;
 
         public BdbFilteredKeysIterator(ForwardCursor cursor, String query) {
             super(cursor, true);
@@ -140,6 +143,7 @@ public class BdbStorageEngineSI extends BdbStorageEngine {
             });
         }
 
+        /** Special-cased for performance reasons. */
         private void processSingleVersion() {
             if(match(lastKey)) {
                 currentMatch = new KeyMatch<ByteArray>(new ByteArray(keyHandler.getOriginalKey(lastKey)),
